@@ -1,0 +1,12 @@
+# EDG (Enterprise Data Governance) Configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: edg-config
+  namespace: default
+data:
+  # Configuration settings for EDG
+  environment: "development"
+  log_level: "info"
+  max_retries: 3
+  timeout: 30
