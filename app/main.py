@@ -1,9 +1,18 @@
 from fastapi import FastAPI, UploadFile, Form
 from pydantic import BaseModel
-from services import storage, taxonomy, composer, evaluator
-from services.aoai import chat_completion
+from app.services import storage, taxonomy, composer, evaluator
+from app.services.aoai import chat_completion
 
 app = FastAPI(title="SmartAI Proposal Builder (Dev)")
+
+# health + root so the platform has a quick 200
+@app.get("/")
+def root():
+    return {"ok": True, "service": "smartai-api"}
+
+@app.get("/health")
+def health():
+    return {"ok": True}
 
 class SessionCreate(BaseModel):
     grant: str = "EDG"
