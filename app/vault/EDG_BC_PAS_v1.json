@@ -1,0 +1,32 @@
+{
+  "id": "EDG_BC_PAS_v1",
+  "grant": "EDG",
+  "section": "business_case",
+  "framework": "PAS",
+  "version": 1,
+  "description": "Business Case & Financial Justification draft using Problem-Agitate-Solve (PAS).",
+  "template": {
+    "instruction": "Act as a professional grant consultant. Draft the Business Case & Financial Justification section for an EDG proposal using the PAS framework. Cite evidence explicitly using [source:<section_id>] markers.",
+    "slots": {
+      "problem": "Summarize the company’s current pain points and weak financial position (from evidence).",
+      "agitate": "Explain why this creates risks for growth, competitiveness, or efficiency. Highlight urgency.",
+      "solve": "Present how the proposed project and vendor quotations solve these issues. Tie to expected ROI and KPIs."
+    },
+    "parameters": {
+      "role": "Consultant",
+      "tone": "Persuasive, evidence-based",
+      "channel": "PDF",
+      "length_cap": 400
+    }
+  },
+  "examples": [
+    {
+      "input": {
+        "evidence": "audited_financials_2023, vendor_quotation",
+        "kpis": ["revenue growth", "ROI", "efficiency"],
+        "company_context": "SME in manufacturing with declining margins"
+      },
+      "output": "Problem: The SME’s audited financials show declining revenue over 3 years [source:audited_financials_2023]. Agitate: This trend threatens long-term competitiveness and reduces cash flow for reinvestment. Solve: By adopting the proposed consultancy scope [source:vendor_quotation], the SME expects a 20% improvement in process efficiency and ROI within 18 months."
+    }
+  ]
+}
