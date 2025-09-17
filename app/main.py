@@ -3,6 +3,8 @@ from pydantic import BaseModel
 from app.services import storage, taxonomy, composer, evaluator
 from app.services.aoai import chat_completion
 
+#test
+
 app = FastAPI(title="SmartAI Proposal Builder (Dev)")
 
 # health + root so the platform has a quick 200
