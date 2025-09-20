@@ -125,7 +125,13 @@ async def draft(req: DraftReq):
         req.inputs["evidence_label"] = ",".join(evidence_used)  # back-compat for any single-label template
 
     msgs = composer.compose_instruction(req.section_id, fw, req.inputs, snippet)
-    out = await chat_completion(msgs, use="worker")
+    try:
+        out = await chat_completion(msgs, use="worker")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=f"Model deployment error: {str(e)}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"AI service error: {str(e)}")
+    
     ev = evaluator.score(out, require_tokens=["source:"] if any(c.isdigit() for c in out) else None)
     return {
         "section_id": req.section_id,
