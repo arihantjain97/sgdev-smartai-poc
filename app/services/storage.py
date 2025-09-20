@@ -11,7 +11,9 @@ CONTAINER_TRACES   = os.environ["STORAGE_CONTAINER_TRACES"]
 TABLE_SESSIONS     = os.environ["STORAGE_TABLE_SESSIONS"]
 
 _cred = DefaultAzureCredential()
-#_blob = BlobServiceClient(f"https://{ACCOUNT}.blob.core.windows.net", credential=_cred)
+_blob = BlobServiceClient(f"https://{ACCOUNT}.blob.core.windows.net", credential=_cred)    
+_table = TableServiceClient(endpoint=f"https://{ACCOUNT}.table.core.windows.net", credential=_cred)
+
 def list_blobs(container: str, prefix: str = "", suffix: str = "") -> list[str]:
     cc = _blob.get_container_client(container)
     names = []
@@ -20,7 +22,6 @@ def list_blobs(container: str, prefix: str = "", suffix: str = "") -> list[str]:
         if not suffix or n.endswith(suffix):
             names.append(n)
     return names
-_table = TableServiceClient(endpoint=f"https://{ACCOUNT}.table.core.windows.net", credential=_cred)
 
 def put_text(container:str, name:str, text:str):
     _blob.get_container_client(container).upload_blob(name, text, overwrite=True)

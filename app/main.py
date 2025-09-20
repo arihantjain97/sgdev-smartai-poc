@@ -1,11 +1,26 @@
-from fastapi import FastAPI, UploadFile, Form, Query
+from fastapi import FastAPI, UploadFile, Form, Query, HTTPException
 from pydantic import BaseModel
 from app.services import storage, taxonomy, composer, evaluator
 from app.services.aoai import chat_completion
+from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
 
 #test
 
 app = FastAPI(title="SmartAI Proposal Builder (Dev)")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[ "https://wonderful-pebble-0bc6fc600.1.azurestaticapps.net" ],
+    allow_methods=["*"], allow_headers=["*"]
+)
+
+class NoCache(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        resp = await call_next(request)
+        resp.headers["Cache-Control"] = "no-store"
+        return resp
+app.add_middleware(NoCache)
 
 # health + root so the platform has a quick 200
 @app.get("/")
@@ -111,20 +126,39 @@ async def draft(req: DraftReq):
         "evaluation": ev
     }
 
+def _strip_label(sid: str, name: str) -> str:
+    # safe strip without relying on removeprefix/removesuffix
+    pref = f"{sid}_"
+    if name.startswith(pref):
+        name = name[len(pref):]
+    if name.endswith(".txt"):
+        name = name[:-4]
+    return name
+
 @app.get("/v1/debug/evidence/{sid}")
 def debug_list_evidence(sid: str, preview: int = Query(0, ge=0, le=4000)):
-    blobs = storage.list_blobs("evidence", prefix=f"{sid}_", suffix=".txt")
-    items = []
-    for name in blobs:
-        label = name.removeprefix(f"{sid}_").removesuffix(".txt")
-        txt = storage.get_text("evidence", name) if preview else ""
-        items.append({
-            "name": name,
-            "label": label,
-            "chars": len(txt) if txt else None,
-            "preview": txt[:preview] if txt else ""
-        })
-    return {"session_id": sid, "items": items}
+    try:
+        # 1) list blobs
+        blobs = storage.list_blobs("evidence", prefix=f"{sid}_", suffix=".txt")
+
+        # 2) optionally read previews
+        items = []
+        for name in blobs:
+            label = _strip_label(sid, name)
+            txt = storage.get_text("evidence", name) if preview else ""
+            items.append({
+                "name": name,
+                "label": label,
+                "chars": (len(txt) if txt else None),
+                "preview": (txt[:preview] if txt else "")
+            })
+
+        return {"session_id": sid, "items": items}
+
+    except Exception as e:
+        # Return a clear 500 body so you can see the exact cause in the browser
+        raise HTTPException(status_code=500, detail=f"debug_list_evidence failed: {type(e).__name__}: {e}")
+
 
 if __name__ == "__main__":
     import uvicorn
