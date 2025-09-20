@@ -1,4 +1,4 @@
-from fastapi import FastAPI, UploadFile, Form
+from fastapi import FastAPI, UploadFile, Form, Query
 from pydantic import BaseModel
 from app.services import storage, taxonomy, composer, evaluator
 from app.services.aoai import chat_completion
@@ -110,6 +110,21 @@ async def draft(req: DraftReq):
         "output": out,
         "evaluation": ev
     }
+
+@app.get("/v1/debug/evidence/{sid}")
+def debug_list_evidence(sid: str, preview: int = Query(0, ge=0, le=4000)):
+    blobs = storage.list_blobs("evidence", prefix=f"{sid}_", suffix=".txt")
+    items = []
+    for name in blobs:
+        label = name.removeprefix(f"{sid}_").removesuffix(".txt")
+        txt = storage.get_text("evidence", name) if preview else ""
+        items.append({
+            "name": name,
+            "label": label,
+            "chars": len(txt) if txt else None,
+            "preview": txt[:preview] if txt else ""
+        })
+    return {"session_id": sid, "items": items}
 
 if __name__ == "__main__":
     import uvicorn
