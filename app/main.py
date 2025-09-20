@@ -48,14 +48,68 @@ class DraftReq(BaseModel):
 @app.post("/v1/grants/edg/draft")
 async def draft(req: DraftReq):
     fw = taxonomy.pick_framework(req.section_id)
-    # Try to load evidence snippet if exists (toy: hardcoded filename)
-    snippet=""
-    try: snippet = storage.get_text("evidence", f"{req.session_id}_{req.section_id}.txt")
-    except: pass
+
+    # --- Evidence selection rules ---
+    # 1) If caller provides inputs.evidence_labels (list), use that order.
+    # 2) Else if caller provides legacy inputs.evidence_label (single), use it.
+    # 3) Else use sensible defaults per section.
+    DEFAULT_EVIDENCE_BY_SECTION = {
+        "business_case": ["acra_extract", "audited_financials"],
+        "consultancy_scope": ["acra_extract"]
+    }
+    labels = None
+    try:
+        labels = req.inputs.get("evidence_labels")
+        if isinstance(labels, str):
+            labels = [labels]
+    except Exception:
+        labels = None
+    if not labels:
+        single = req.inputs.get("evidence_label")
+        if single:
+            labels = [single]
+    if not labels:
+        labels = DEFAULT_EVIDENCE_BY_SECTION.get(req.section_id, [req.section_id])
+
+    # --- Load snippets in order; cap total length ---
+    MAX_CHARS = int(req.inputs.get("evidence_char_cap", 6000))
+    parts = []
+    evidence_used = []
+    for label in labels:
+        blob_name = f"{req.session_id}_{label}.txt"
+        try:
+            txt = storage.get_text("evidence", blob_name)
+            if not txt:
+                continue
+            header = f"\n\n--- [evidence:{label}] ---\n"
+            parts.append(header + txt)
+            evidence_used.append(label)
+            if sum(len(p) for p in parts) >= MAX_CHARS:
+                break
+        except Exception:
+            # Missing evidence file is OK; skip
+            continue
+
+    snippet = ""
+    if parts:
+        joined = "".join(parts)
+        snippet = joined[:MAX_CHARS]
+
+    # Surface the labels into inputs so the prompt can mention them
+    if evidence_used:
+        req.inputs["evidence_labels"] = evidence_used
+        req.inputs["evidence_label"] = ",".join(evidence_used)  # back-compat for any single-label template
+
     msgs = composer.compose_instruction(req.section_id, fw, req.inputs, snippet)
     out = await chat_completion(msgs, use="worker")
     ev = evaluator.score(out, require_tokens=["source:"] if any(c.isdigit() for c in out) else None)
-    return {"section_id": req.section_id, "framework": fw, "output": out, "evaluation": ev}
+    return {
+        "section_id": req.section_id,
+        "framework": fw,
+        "evidence_used": evidence_used,
+        "output": out,
+        "evaluation": ev
+    }
 
 if __name__ == "__main__":
     import uvicorn

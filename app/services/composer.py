@@ -6,7 +6,21 @@ def compose_instruction(section_id:str, framework:str, inputs:dict, evidence_sni
     }[framework]
     style = inputs.get("style","Formal, consultant voice")
     length = inputs.get("length_limit", 350)
-    evidence_clause = f"Use only facts from: {inputs.get('evidence_label','[no-evidence]')}.\n{evidence_snippet}\n" if evidence_snippet else ""
+
+    # Prefer plural evidence_labels; fall back to single evidence_label; else [no-evidence]
+    labels = inputs.get("evidence_labels") or inputs.get("evidence_label")
+    if isinstance(labels, list):
+        labels_str = ", ".join(labels) if labels else "[no-evidence]"
+    else:
+        labels_str = labels or "[no-evidence]"
+
+    evidence_clause = ""
+    if evidence_snippet:
+        evidence_clause = (
+            f"Use only facts from these evidence slices: {labels_str}.\n"
+            f"{evidence_snippet}\n"
+        )
+
     system = (
       f"You are a grant consultant. Draft section '{section_id}' using {framework} "
       f"with slots {slots}. Tone: {style}. Max words: {length}. "
