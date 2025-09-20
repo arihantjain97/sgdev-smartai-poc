@@ -10,9 +10,10 @@ def _headers():
 
 def _deployment(use: str) -> str:
     if use == "manager":
-        return get("MODEL.MANAGER", default="gpt-4.1-manager")
-    # default worker
-    return get("MODEL.WORKER", default="gpt-4.1-mini-worker")
+        dep = get("MODEL.MANAGER", default="gpt-4.1-manager")
+    else:
+        dep = get("MODEL.WORKER", default="gpt-4.1-mini-worker")
+    return dep.strip()
 
 async def chat_completion(messages, *, use="worker", max_tokens=800, temperature=0.2, timeout=60):
     dep = _deployment(use)
