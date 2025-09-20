@@ -4,6 +4,7 @@ from app.services import storage, taxonomy, composer, evaluator
 from app.services.aoai import chat_completion
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
+from app.services.appcfg import get_bool, get as cfg_get
 
 #test
 
@@ -30,6 +31,14 @@ def root():
 @app.get("/health")
 def health():
     return {"ok": True}
+
+@app.get("/v1/config/features")
+def features():
+    return {
+        "feature_psg_enabled": get_bool("FEATURE_PSG_ENABLED", False),
+        "model_worker": cfg_get("MODEL.WORKER", "gpt-4.1-mini-worker"),
+        "prompt_pack_active": cfg_get("PROMPT_PACK_ACTIVE", "edg@latest-approved"),
+    }
 
 class SessionCreate(BaseModel):
     grant: str = "EDG"
