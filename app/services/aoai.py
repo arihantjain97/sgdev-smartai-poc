@@ -3,7 +3,12 @@ import os, httpx
 from .secrets import get_secret
 from .appcfg import get
 
-AOAI_ENDPOINT = os.environ["AZURE_OPENAI_ENDPOINT"].rstrip("/")
+def _get_endpoint() -> str:
+    ep = os.getenv("AZURE_OPENAI_ENDPOINT")
+    if not ep:
+        raise RuntimeError("AOAI not configured: set AZURE_OPENAI_ENDPOINT")
+    return ep.rstrip("/")
+
 # Pull key from Key Vault at runtime (cached)
 def _headers():
     return {"api-key": get_secret("aoai-key-dev"), "Content-Type": "application/json"}
@@ -16,8 +21,9 @@ def _deployment(use: str) -> str:
     return dep.strip()
 
 async def chat_completion(messages, *, use="worker", max_tokens=800, temperature=0.2, timeout=60):
+    endpoint = _get_endpoint()
     dep = _deployment(use)
-    url = f"{AOAI_ENDPOINT}/openai/deployments/{dep}/chat/completions?api-version=2024-10-01-preview"
+    url = f"{endpoint}/openai/deployments/{dep}/chat/completions?api-version=2024-10-01-preview"
     payload = {"messages": messages, "max_tokens": max_tokens, "temperature": temperature}
     async with httpx.AsyncClient(timeout=timeout) as client:
         r = await client.post(url, headers=_headers(), json=payload)

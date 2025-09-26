@@ -1,4 +1,4 @@
-from fastapi import FastAPI, UploadFile, Form, Query, HTTPException
+from fastapi import FastAPI, UploadFile, Form, Query, HTTPException, Response
 from pydantic import BaseModel
 from app.services import storage, taxonomy, composer, evaluator
 from app.services.aoai import chat_completion
@@ -70,7 +70,7 @@ class DraftReq(BaseModel):
     inputs: dict = {}
 
 @app.post("/v1/grants/edg/draft")
-async def draft(req: DraftReq):
+async def draft(req: DraftReq, response: Response):
     fw = taxonomy.pick_framework(req.section_id)
 
     # --- Evidence selection rules ---
@@ -124,7 +124,8 @@ async def draft(req: DraftReq):
         req.inputs["evidence_labels"] = evidence_used
         req.inputs["evidence_label"] = ",".join(evidence_used)  # back-compat for any single-label template
 
-    msgs = composer.compose_instruction(req.section_id, fw, req.inputs, snippet)
+    msgs, packver = composer.compose_instruction(req.section_id, fw, req.inputs or {}, snippet)
+    response.headers["x-prompt-pack"] = packver
     try:
         out = await chat_completion(msgs, use="worker")
     except ValueError as e:
