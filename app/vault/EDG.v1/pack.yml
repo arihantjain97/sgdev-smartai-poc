@@ -1,5 +1,5 @@
 pack_id: edg
-version: 1.0.0
+version: 1.0.1
 status: approved   # draft | candidate | approved
 labels: { grant: EDG, locale: en-SG }
 
@@ -21,3 +21,9 @@ templates:
     file: templates/consultancy_scope.md
     rubric:
       required_tokens: ["Situation","Complication","Question","Answer"]
+  business_case__manufacturing:
+    section_id: business_case
+    retrieval_tags: ["business_case","edg","pas","manufacturing"]
+    file: templates/business_case.manufacturing.md
+    rubric:
+      required_tokens: ["Problem","Agitate","Solve"]
