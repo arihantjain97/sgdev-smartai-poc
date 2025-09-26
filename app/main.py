@@ -124,7 +124,10 @@ async def draft(req: DraftReq, response: Response):
         req.inputs["evidence_labels"] = evidence_used
         req.inputs["evidence_label"] = ",".join(evidence_used)  # back-compat for any single-label template
 
-    msgs, packver = composer.compose_instruction(req.section_id, fw, req.inputs or {}, snippet)
+    try:
+        msgs, packver = composer.compose_instruction(req.section_id, fw, req.inputs or {}, snippet)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Prompt Vault error: {type(e).__name__}: {e}")
     response.headers["x-prompt-pack"] = packver
     try:
         out = await chat_completion(msgs, use="worker")
