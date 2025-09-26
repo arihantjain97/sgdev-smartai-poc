@@ -1,0 +1,288 @@
+Directory Structure:
+==================================================
+└── vault/
+    ├── EDG.v1/
+    │   ├── golden/
+    │   │   └── business_case.jsonl
+    │   ├── templates/
+    │   │   ├── business_case.md
+    │   │   └── consultancy_scope.md
+    │   └── pack.yml
+    └── PSG.v1/
+        ├── golden/
+        │   └── business_impact.jsonl
+        ├── templates/
+        │   ├── business_impact.md
+        │   ├── cost_breakdown.md
+        │   ├── solution_description.md
+        │   └── vendor_quotation.md
+        └── pack.yml
+
+File: EDG.v1/golden/business_case.jsonl
+[business_case.jsonl: start]
+{"id":"edg-gs-1","inputs":{"style":"Formal, outcome-oriented","length_limit":300},"evidence_labels":["acra_extract","audited_financials"],"assert":{"groundedness_min":0.8,"length_max_words":320}}
+[business_case.jsonl: end]
+
+File: EDG.v1/pack.yml
+[pack.yml: start]
+pack_id: edg
+version: 1.0.0
+status: approved   # draft | candidate | approved
+labels: { grant: EDG, locale: en-SG }
+
+defaults:
+  frameworks:
+    business_case: PAS
+    consultancy_scope: SCQA
+  style: "Formal, outcome-oriented"
+  evidence_char_cap: 6000
+
+templates:
+  business_case:
+    retrieval_tags: ["business_case","edg","pas","generic"]
+    file: templates/business_case.md
+    rubric:
+      required_tokens: ["Problem","Agitate","Solve"]
+  consultancy_scope:
+    retrieval_tags: ["scope","edg","scqa","generic"]
+    file: templates/consultancy_scope.md
+    rubric:
+      required_tokens: ["Situation","Complication","Question","Answer"]
+[pack.yml: end]
+
+File: EDG.v1/templates/business_case.md
+[business_case.md: start]
+You are a grant consultant. Draft the **Business Case** using the {{framework}} pattern.
+Tone: {{style}}. Max words: {{length_limit}}.
+Cite numbers with [source:<label>].
+Context (evidence): {{evidence_window}}
+[business_case.md: end]
+
+File: EDG.v1/templates/consultancy_scope.md
+[consultancy_scope.md: start]
+You are a grant consultant. Draft the **Consultancy Scope** using the {{framework}} pattern (SCQA).
+Tone: {{style}}. Max words: {{length_limit}}.
+Cite any figure, rate, man-day, or date with [source:<label>].
+Only use facts found in the evidence window. Do not invent items that are not in evidence.
+
+Context (evidence window, truncated): 
+{{evidence_window}}
+
+---
+## Situation
+Briefly describe the current business context and objectives for this EDG project (1–2 sentences). Reference factual anchors such as revenue scale, team size, ops footprint, or systems if available. Include citations for any numbers. 
+
+## Complication
+Summarise the core pain points that justify external consultancy (process gaps, capability gaps, compliance/productivity issues, data fragmentation, change management, etc.). Keep concise and grounded in the client’s materials.
+
+## Question
+State the key question this engagement must answer (e.g., “How do we redesign process X and implement solution Y to achieve Z outcomes within N months?”). Keep this as one clear question.
+
+## Answer (Scope of Work)
+Outline **what the consultants will do** and **what the client will get**.
+
+### 1) Approach & Methodology
+- Brief description of the approach (diagnose → design → pilot → implement → stabilise), adapted to the project’s context.
+- Name any frameworks, toolkits, or benchmarks only if they appear in evidence.
+- Call out data collection methods (interviews, shadowing, system logs) if present in evidence.
+
+### 2) Phased Workplan & Deliverables
+Break down the project into phases. For each phase, include **objective, activities, deliverables, man-days**. Use only activities/deliverables present in the consultant’s proposal or client brief.
+
+**Phase 1 — Discovery / Diagnosis**
+- Objective: …
+- Activities: …
+- Deliverables: …
+- Estimated man-days: … [source:vendor_proposal or consultant_proposal]
+
+**Phase 2 — Design**
+- Objective: …
+- Activities: …
+- Deliverables: …
+- Estimated man-days: … [source:vendor_proposal]
+
+**Phase 3 — Implementation / Pilot**
+- Objective: …
+- Activities: …
+- Deliverables: …
+- Estimated man-days: … [source:vendor_proposal]
+
+**Phase 4 — Stabilisation / Handover**
+- Objective: …
+- Activities: …
+- Deliverables: SOPs, training, handover notes, KPIs baseline, etc. (only if stated in evidence)
+- Estimated man-days: … [source:vendor_proposal]
+
+> If the proposal defines different or fewer phases, mirror those exactly and keep the same structure.
+
+### 3) Team & Credentials
+- List named consultants and roles only if present in evidence.  
+  Include **man-day rate breakdown** (e.g., Partner, Principal, Consultant) if stated.  
+  - Example: Partner S$X/day; Consultant S$Y/day. [source:fee_breakdown]
+- For projects where **management consultants** are engaged, include:
+  - Summary of **scope of work** drawn from the consultants’ proposal. [source:consultant_proposal]
+  - **Man-day rate breakdown** for each grade. [source:fee_breakdown]
+  - **CV highlights** (relevant projects, years experience) for key individuals, if provided. [source:consultant_cvs]
+  - **TR 43 or SS 680 certification** details for each consultant; mention certificate IDs or scans if present. [source:consultant_certifications]
+
+### 4) Fee Breakdown (by phase and role)
+Provide a transparent breakdown strictly from the proposal:
+- **Per phase**: activities covered, man-days, rate(s), **subtotal**.  
+- **By role/grade**: rate and allocated man-days.  
+- **Total professional fees** and any **out-of-pocket expenses** if stated.  
+All figures must appear in evidence; do **not** estimate.  
+Use a short bullet/table-like structure in text, e.g.:
+
+- Phase 1: Discovery — X man-days × S$R/day = **S$…**. [source:fee_breakdown]  
+- Phase 2: Design — …  
+- Total Professional Fees: **S$…**. [source:fee_breakdown]
+
+### 5) Client Responsibilities & Assumptions
+List any assumptions or prerequisites explicitly mentioned in the proposal (e.g., timely access to data/stakeholders, test environment availability, decision cadence, travel policy). [source:consultant_proposal]
+
+### 6) Timeline & Milestones
+Summarise duration and key milestones per phase (e.g., “Week 1–3 Discovery; Week 4 Design workshops; Week 5–8 Pilot”). Only include dates/durations present in evidence. [source:project_timeline]
+
+### 7) Governance & Reporting
+- Steering or working committee structure, meeting cadence, and artefacts (status reports, RAID logs) **if** stated. [source:consultant_proposal]
+- Escalation path and acceptance checkpoints per phase if available.
+
+### 8) Risks & Mitigations
+List the **top 3–5 engagement risks** that are mentioned or clearly implied in evidence (e.g., data availability, stakeholder bandwidth, integration complexity), each with a mitigation drawn from the proposal/plan. Keep crisp and factual.
+
+### 9) Expected Outcomes & KPIs
+Summarise the outcomes the consultancy will enable (process cycle-time reduction, error-rate reduction, adoption targets) **only if** such outcomes/KPIs are present in evidence. If quantitative targets exist, cite them. [source:benefits_case or vendor_proposal]
+
+---
+**Output rules (strict)**
+- Use concise headings and bullet lists; avoid marketing fluff.
+- Do **not** fabricate deliverables, rates, man-days, or certifications.
+- Every number must have a citation like [source:fee_breakdown] or [source:consultant_proposal].
+- Prefer client/consultant wording where available; otherwise summarise neutrally.
+[consultancy_scope.md: end]
+
+File: PSG.v1/golden/business_impact.jsonl
+[business_impact.jsonl: start]
+{"id":"psg-bi-001","inputs":{"style":"Formal, outcome-oriented","length_limit":280},"evidence_labels":["vendor_quotation","cost_breakdown","business_impact_report"],"assert":{"groundedness_min":0.80,"length_max_words":300,"required_tokens":["Situation","Complication","Question","Answer"],"citation_coverage_min":0.70},"notes":"Generic IT solution; expect clear link from features->productivity and citations on every number."}
+{"id":"psg-bi-002","inputs":{"style":"Formal, outcome-oriented","length_limit":260},"evidence_labels":["vendor_quotation","cost_breakdown"],"assert":{"groundedness_min":0.80,"length_max_words":280,"required_tokens":["Situation","Complication","Question","Answer"],"citation_coverage_min":0.60},"notes":"Quotation + cost only; model must avoid inventing ROI. OK to state qualitative impact if numbers not present; still cite costs."}
+{"id":"psg-bi-003","inputs":{"style":"Formal, outcome-oriented","length_limit":300},"evidence_labels":["vendor_quotation","cost_breakdown","business_impact_report"],"assert":{"groundedness_min":0.85,"length_max_words":320,"required_tokens":["Situation","Complication","Question","Answer"],"citation_coverage_min":0.80},"notes":"Stricter case; business_impact_report contains % time-saved. Output should echo % with citation and remain within word cap."}
+[business_impact.jsonl: end]
+
+File: PSG.v1/pack.yml
+[pack.yml: start]
+pack_id: psg
+version: 1.0.0
+status: approved     # draft | candidate | approved
+labels:
+  grant: PSG
+  locale: en-SG
+
+defaults:
+  frameworks:
+    solution_description: SCQA
+    vendor_quotation: PAS
+    cost_breakdown: PAS
+    business_impact: SCQA
+  style: "Formal, outcome-oriented"
+  evidence_char_cap: 6000
+
+templates:
+  solution_description:
+    retrieval_tags: ["psg","solution","description","scqa"]
+    file: templates/solution_description.md
+    rubric:
+      required_tokens: ["Situation","Complication","Question","Answer"]
+  
+  vendor_quotation:
+    retrieval_tags: ["psg","vendor","quotation","pas"]
+    file: templates/vendor_quotation.md
+    rubric:
+      required_tokens: ["Problem","Agitate","Solve"]
+  
+  cost_breakdown:
+    retrieval_tags: ["psg","cost","breakdown","pas"]
+    file: templates/cost_breakdown.md
+    rubric:
+      required_tokens: ["Problem","Agitate","Solve"]
+
+  business_impact:
+    retrieval_tags: ["psg","impact","productivity","scqa"]
+    file: templates/business_impact.md
+    rubric:
+      required_tokens: ["Situation","Complication","Question","Answer"]
+[pack.yml: end]
+
+File: PSG.v1/templates/business_impact.md
+[business_impact.md: start]
+You are a grant consultant. Draft the **Business Impact** section
+using the {{framework}} pattern.
+
+Tone: {{style}}. Max words: {{length_limit}}.
+
+Instructions:
+- Explain how the solution will improve productivity, efficiency, or reduce costs.
+- Mention quantitative benefits (e.g., % time saved, revenue uplift) if evidence provides figures.
+- Highlight alignment with PSG objectives: automation, productivity gains, digital transformation.
+- Include qualitative benefits (e.g., improved service delivery, reduced manual errors).
+- Note that benefits must be realistic and traceable to uploaded evidence.
+
+Cite facts with [source:<label>] — e.g., vendor_quotation, cost_breakdown, business_impact_report.
+Context (evidence): {{evidence_window}}
+[business_impact.md: end]
+
+File: PSG.v1/templates/cost_breakdown.md
+[cost_breakdown.md: start]
+You are a grant consultant. Draft the **Cost Breakdown** section
+using the {{framework}} pattern.
+
+Tone: {{style}}. Max words: {{length_limit}}.
+
+Instructions:
+- Present costs grouped by category (e.g., software license, equipment, consultancy fees).
+- Clearly separate eligible vs non-eligible costs if visible in evidence.
+- Provide totals and sub-totals with [source:cost_breakdown].
+- Emphasize compliance with PSG rules (e.g., quotation matches Annex 3 of pre-approved package).
+- Mention that retrospective payments are not allowed if relevant.
+
+All costs must come from the uploaded evidence.
+Cite with [source:cost_breakdown].
+Context (evidence): {{evidence_window}}
+[cost_breakdown.md: end]
+
+File: PSG.v1/templates/solution_description.md
+[solution_description.md: start]
+You are a grant consultant. Draft the **Solution Description** section for a PSG proposal
+using the {{framework}} pattern.
+
+Tone: {{style}}. Max words: {{length_limit}}.
+
+Instructions:
+- Summarize the IT solution, equipment, or consultancy service being applied for.
+- Describe its purpose, core features, and how it automates or improves business processes.
+- Mention deployment details (e.g., location, equipment specs, vendor name) if available in evidence.
+- Emphasize alignment with productivity improvement and automation goals of PSG.
+- Use clear, outcome-oriented language that would be acceptable to EnterpriseSG evaluators.
+
+Cite facts directly from evidence with [source:<label>].
+Context (evidence): {{evidence_window}}
+[solution_description.md: end]
+
+File: PSG.v1/templates/vendor_quotation.md
+[vendor_quotation.md: start]
+You are a grant consultant. Draft the **Vendor Quotation Summary** section
+using the {{framework}} pattern.
+
+Tone: {{style}}. Max words: {{length_limit}}.
+
+Instructions:
+- Summarize the vendor’s official quotation exactly as provided.
+- Highlight vendor name, quotation reference, and date if available.
+- List key items/services with line-item descriptions.
+- Report costs and man-day rates as per the quotation. Do not invent or round numbers.
+- Flag if the quotation does not appear to match a pre-approved vendor solution.
+
+All numbers must be grounded in the quotation evidence.
+Cite numbers with [source:vendor_quotation].
+Context (evidence): {{evidence_window}}
+[vendor_quotation.md: end]
+

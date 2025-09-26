@@ -1,31 +1,25 @@
+from .prompt_vault import retrieve_template
+from .appcfg import get as cfg_get
+
+
 def compose_instruction(section_id:str, framework:str, inputs:dict, evidence_snippet:str="")->list:
-    # framework slots (toy)
-    slots = {
-      "PAS": ["Problem","Agitate","Solve"],
-      "SCQA":["Situation","Complication","Question","Answer"]
-    }[framework]
-    style = inputs.get("style","Formal, consultant voice")
-    length = inputs.get("length_limit", 350)
+    style   = inputs.get("style","Formal, consultant voice")
+    length  = inputs.get("length_limit", 350)
+    grant   = (inputs.get("grant") or inputs.get("grant_id") or "edg").lower()
+    tags    = [section_id, framework.lower(), grant] + inputs.get("tags",[])
+    tpl_obj = retrieve_template(section_id, tags=tags)
+    tpl     = tpl_obj["template"]
 
-    # Prefer plural evidence_labels; fall back to single evidence_label; else [no-evidence]
-    labels = inputs.get("evidence_labels") or inputs.get("evidence_label")
-    if isinstance(labels, list):
-        labels_str = ", ".join(labels) if labels else "[no-evidence]"
-    else:
-        labels_str = labels or "[no-evidence]"
-
-    evidence_clause = ""
-    if evidence_snippet:
-        evidence_clause = (
-            f"Use only facts from these evidence slices: {labels_str}.\n"
-            f"{evidence_snippet}\n"
-        )
-
-    system = (
-      f"You are a grant consultant. Draft section '{section_id}' using {framework} "
-      f"with slots {slots}. Tone: {style}. Max words: {length}. "
-      "Add [source:<label>] after any number you cite. "
-      + evidence_clause
+    evidence_window = evidence_snippet[: int(inputs.get("evidence_char_cap") or cfg_get("EVIDENCE_CHAR_CAP","6000"))]
+    prompt_text = (tpl
+        .replace("{{framework}}", framework)
+        .replace("{{style}}", style)
+        .replace("{{length_limit}}", str(length))
+        .replace("{{evidence_window}}", evidence_window)
     )
-    user = inputs.get("prompt","Write the draft.")
-    return [{"role":"system","content":system},{"role":"user","content":user}]
+
+    # You already build system+user; add a response header later with pack@ver
+    return [
+      {"role":"system","content":"You are a grant consultant. Use only provided evidence; cite with [source:<label>]."},
+      {"role":"user","content": prompt_text}
+    ], f"{tpl_obj['pack_id']}@{tpl_obj['version']}"

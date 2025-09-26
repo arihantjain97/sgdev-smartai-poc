@@ -1,0 +1,23 @@
+pack_id: edg
+version: 1.0.0
+status: approved   # draft | candidate | approved
+labels: { grant: EDG, locale: en-SG }
+
+defaults:
+  frameworks:
+    business_case: PAS
+    consultancy_scope: SCQA
+  style: "Formal, outcome-oriented"
+  evidence_char_cap: 6000
+
+templates:
+  business_case:
+    retrieval_tags: ["business_case","edg","pas","generic"]
+    file: templates/business_case.md
+    rubric:
+      required_tokens: ["Problem","Agitate","Solve"]
+  consultancy_scope:
+    retrieval_tags: ["scope","edg","scqa","generic"]
+    file: templates/consultancy_scope.md
+    rubric:
+      required_tokens: ["Situation","Complication","Question","Answer"]
