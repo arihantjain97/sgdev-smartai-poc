@@ -30,44 +30,63 @@ def _cache_get(pack, ver, section) -> Optional[dict]:
 def _cache_set(pack, ver, section, doc, ttl=30):
     _cache[(pack,ver,section)] = (doc, time.time()+ttl)
 
-def retrieve_template(section_id: str, tags: Optional[List[str]]=None) -> dict:
+def retrieve_template(section_id: str, tags: Optional[List[str]] = None) -> dict:
     pack, ver = _active_pack()
     cached = _cache_get(pack, ver, section_id)
-    if cached: return cached
+    if cached:
+        return cached
 
-    # Build filter
     flt = f"pack_id eq '{pack}' and status eq 'approved' and section_id eq '{section_id}'"
     if ver != "latest-approved":
         flt += f" and version eq '{ver}'"
 
     search_text = " ".join(tags or [section_id])
 
+    # ONLY ask for fields that are retrievable in your index
+    SELECT_FIELDS = ["template_text", "metadata_json"]
+
     results = _client.search(
         search_text=search_text,
         filter=flt,
         top=3,
         query_type="simple",
+        select=SELECT_FIELDS,
     )
 
     hit = None
     for d in results:
+        meta = {}
+        try:
+            meta = json.loads(d.get("metadata_json") or "{}")
+        except Exception:
+            meta = {}
         hit = {
-          "template": d["template_text"],
-          "pack_id": d["pack_id"],
-          "version": d["version"],
-          "metadata": json.loads(d["metadata_json"]) if d.get("metadata_json") else {}
+            "template": d.get("template_text", ""),
+            "pack_id": meta.get("pack_id"),      # <— from metadata_json
+            "version": meta.get("version"),      # <— from metadata_json
+            "metadata": meta,
         }
         break
 
     if not hit:
-        # Fallback: ask for any template for the section (latest approved for pack)
-        results = _client.search(search_text=section_id, filter=f"pack_id eq '{pack}' and status eq 'approved' and section_id eq '{section_id}'", top=1)
+        # Fallback search (keep the same select)
+        results = _client.search(
+            search_text=section_id,
+            filter=f"pack_id eq '{pack}' and status eq 'approved' and section_id eq '{section_id}'",
+            top=1,
+            select=SELECT_FIELDS,
+        )
         for d in results:
+            meta = {}
+            try:
+                meta = json.loads(d.get("metadata_json") or "{}")
+            except Exception:
+                meta = {}
             hit = {
-              "template": d["template_text"],
-              "pack_id": d["pack_id"],
-              "version": d["version"],
-              "metadata": json.loads(d["metadata_json"]) if d.get("metadata_json") else {}
+                "template": d.get("template_text", ""),
+                "pack_id": meta.get("pack_id"),
+                "version": meta.get("version"),
+                "metadata": meta,
             }
             break
 
