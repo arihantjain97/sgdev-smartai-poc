@@ -69,6 +69,7 @@ class DraftReq(BaseModel):
     section_id: str
     inputs: dict = {}
 
+
 @app.post("/v1/grants/edg/draft")
 async def draft(req: DraftReq, response: Response):
     fw = taxonomy.pick_framework(req.section_id)
