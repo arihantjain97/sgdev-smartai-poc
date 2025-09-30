@@ -40,7 +40,7 @@ def pack_to_docs(pack_dir: pathlib.Path):
     yml = yaml.safe_load(read_text(pack_dir / "pack.yml"))
     pack_id = yml["pack_id"]
     version = yml["version"]
-    status  = yml.get("status","draft")
+    pack_status = yml.get("status","draft")
     labels  = yml.get("labels",{})
     templates = yml.get("templates",{})
 
@@ -52,6 +52,9 @@ def pack_to_docs(pack_dir: pathlib.Path):
 
         # Allow explicit override; otherwise use the YAML key as section_id
         section_id = t.get("section_id", tmpl_key)
+        
+        # Honor per-template status (so each doc gets its own status)
+        tmpl_status = t.get("status", pack_status)  # <-- use template-level status if present
 
         meta = {
             "pack_id": pack_id,
@@ -67,7 +70,7 @@ def pack_to_docs(pack_dir: pathlib.Path):
             "id": doc_id(pack_id, version, section_id, tmpl_key),  # 👈 uses tmpl_key
             "pack_id": pack_id,
             "version": version,
-            "status": status,
+            "status": tmpl_status,  # <-- not the pack-level status
             "section_id": section_id,
             "retrieval_tags": tags,
             "template_text": text,
@@ -82,20 +85,17 @@ def main():
             continue
         docs.extend(list(pack_to_docs(pack_dir)))
 
-    # Only upload approved on Day-2 (dev)
-    approved = [d for d in docs if d["status"] == "approved"]
-    if not approved:
-        print("No approved templates found. Set status: approved in pack.yml", file=sys.stderr)
-        sys.exit(1)
-
-    # Upsert
-    r = client.upload_documents(approved)
+    # Upload all docs (both approved & draft) so demotions take effect
+    r = client.upload_documents(docs)
     failed = [x for x in r if not x.succeeded]
     if failed:
         print("Some docs failed:", failed, file=sys.stderr)
         sys.exit(2)
 
-    print(f"Uploaded {len(approved)} docs to {INDEX_NAME}")
+    # Optional: visibility
+    n_total = len(docs)
+    n_approved = sum(1 for d in docs if d["status"] == "approved")
+    print(f"Uploaded {n_total} docs ({n_approved} approved) to {INDEX_NAME}")
 
 if __name__ == "__main__":
     main()

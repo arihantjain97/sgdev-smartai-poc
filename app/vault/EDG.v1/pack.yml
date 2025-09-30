@@ -22,6 +22,7 @@ templates:
     rubric:
       required_tokens: ["Situation","Complication","Question","Answer"]
   business_case__manufacturing:
+    status: draft        
     section_id: business_case
     retrieval_tags: ["business_case","edg","pas","manufacturing"]
     file: templates/business_case.manufacturing.md
