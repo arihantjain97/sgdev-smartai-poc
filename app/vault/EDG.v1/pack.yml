@@ -28,3 +28,70 @@ templates:
     file: templates/business_case.manufacturing.md
     rubric:
       required_tokens: ["Problem","Agitate","Solve"]
+
+  about_company:
+    retrieval_tags: ["edg","about_company"]
+    file: templates/about_company.md
+    rubric:
+      required_tokens: ["Year","Key"]
+    evidence_hints:
+      priority_labels: ["acra_bizfile","audited_financials"]
+      optional_labels: ["parent_consolidated_fs"]
+
+  about_project__core:
+    section_id: about_project
+    retrieval_tags: ["edg","about_project","core"]
+    file: templates/about_project.core.md
+    rubric:
+      required_tokens: ["Current","Challenges","Proposed"]
+    evidence_hints:
+      priority_labels: ["audited_financials"]
+      optional_labels: []
+
+  about_project__i_and_p__automation:
+    section_id: about_project
+    retrieval_tags: ["edg","about_project","innovation_productivity","automation"]
+    file: templates/about_project.i_and_p.automation.md
+    rubric:
+      required_tokens: ["Current","Proposed","Improvements"]
+    evidence_hints:
+      priority_labels: ["audited_financials"]
+      optional_labels: []
+
+  about_project__i_and_p__product_development:
+    section_id: about_project
+    retrieval_tags: ["edg","about_project","innovation_productivity","product_development"]
+    file: templates/about_project.i_and_p.product_development.md
+    rubric:
+      required_tokens: ["Product","Market","Barriers","Target"]
+    evidence_hints:
+      priority_labels: ["audited_financials"]
+      optional_labels: []
+
+  expansion_plan__market_access:
+    section_id: expansion_plan
+    retrieval_tags: ["edg","market_access","expansion_plan"]
+    file: templates/expansion_plan.market_access.md
+    rubric:
+      required_tokens: ["Target","Competitors","Advantage"]
+    evidence_hints:
+      priority_labels: ["audited_financials"]
+      optional_labels: []
+
+  project_outcomes:
+    retrieval_tags: ["edg","project_outcomes"]
+    file: templates/project_outcomes.md
+    rubric:
+      required_tokens: ["Capability","Outcomes"]
+    evidence_hints:
+      priority_labels: ["audited_financials"]
+      optional_labels: []
+
+  project_milestones:
+    retrieval_tags: ["edg","project_milestones"]
+    file: templates/project_milestones.md
+    rubric:
+      required_tokens: ["Phase","Start","End","Deliverables"]
+    evidence_hints:
+      priority_labels: ["audited_financials"]
+      optional_labels: []

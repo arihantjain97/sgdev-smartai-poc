@@ -5,6 +5,7 @@ Directory Structure:
     │   ├── golden/
     │   │   └── business_case.jsonl
     │   ├── templates/
+    │   │   ├── business_case.manufacturing.md
     │   │   ├── business_case.md
     │   │   └── consultancy_scope.md
     │   └── pack.yml
@@ -26,7 +27,7 @@ File: EDG.v1/golden/business_case.jsonl
 File: EDG.v1/pack.yml
 [pack.yml: start]
 pack_id: edg
-version: 1.0.0
+version: 1.0.1
 status: approved   # draft | candidate | approved
 labels: { grant: EDG, locale: en-SG }
 
@@ -48,11 +49,26 @@ templates:
     file: templates/consultancy_scope.md
     rubric:
       required_tokens: ["Situation","Complication","Question","Answer"]
+  business_case__manufacturing:
+    status: draft        
+    section_id: business_case
+    retrieval_tags: ["business_case","edg","pas","manufacturing"]
+    file: templates/business_case.manufacturing.md
+    rubric:
+      required_tokens: ["Problem","Agitate","Solve"]
 [pack.yml: end]
+
+File: EDG.v1/templates/business_case.manufacturing.md
+[business_case.manufacturing.md: start]
+You are a grant consultant. Draft the **Business Case** using the {{framework}} pattern. Always suggest solutions which are geared towards Manufacturing optimisation. Always Start the output with "Test-250925-Manufacturing". 
+Tone: {{style}}. Max words: {{length_limit}}.
+Cite numbers with [source:<label>].
+Context (evidence): {{evidence_window}}
+[business_case.manufacturing.md: end]
 
 File: EDG.v1/templates/business_case.md
 [business_case.md: start]
-You are a grant consultant. Draft the **Business Case** using the {{framework}} pattern.
+You are a grant consultant. Draft the **Business Case** using the {{framework}} pattern. Always Start the output with "Test-250925".
 Tone: {{style}}. Max words: {{length_limit}}.
 Cite numbers with [source:<label>].
 Context (evidence): {{evidence_window}}
