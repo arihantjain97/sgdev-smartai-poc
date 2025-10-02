@@ -1,0 +1,1 @@
+{"id":"edg-ac-001","inputs":{"style":"Formal, outcome-oriented","length_limit":220},"evidence_labels":["acra_bizfile","audited_financials"],"assert":{"groundedness_min":0.80,"length_max_words":240,"citation_coverage_min":0.60}}

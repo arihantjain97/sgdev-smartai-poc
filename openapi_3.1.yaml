@@ -1,0 +1,625 @@
+openapi: 3.1.0
+info:
+  title: SmartAI API
+  version: 1.1.0
+  description: >
+    Runtime-driven proposal automation & related AI services for grants (EDG, PSG, MRA),
+    designed to extend to future use-cases (e.g., lead_generation) via packs, solutions, and section variants.
+servers:
+  - url: https://api.smartai.local/v1
+security:
+  - bearerAuth: []
+
+tags:
+  - name: Health
+  - name: Sessions
+  - name: Intake & Recommendations
+  - name: Solutions
+  - name: Checklist
+  - name: Evidence
+  - name: Eligibility
+  - name: Drafts
+  - name: Validation
+  - name: Packs
+  - name: Catalog & Vendor Docs
+
+paths:
+  /health:
+    get:
+      tags: [Health]
+      summary: Health ping
+      responses:
+        '200': { description: OK }
+
+  /sessions:
+    post:
+      tags: [Sessions]
+      summary: Create a workflow session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            examples:
+              edg:
+                summary: EDG session
+                value: { grant: EDG, use_case: proposal_builder, company: { uen: "201912345Z", name: "Innovate Pte. Ltd." } }
+              psg:
+                summary: PSG session
+                value: { grant: PSG, use_case: proposal_builder, company: { uen: "202055555A", name: "Alpha SG Pte. Ltd." } }
+            schema: { $ref: '#/components/schemas/SessionCreate' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Session' }
+
+  /sessions/{sessionId}:
+    get:
+      tags: [Sessions]
+      summary: Get session
+      parameters: [ { $ref: '#/components/parameters/SessionId' } ]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Session' }
+
+  /intake:
+    post:
+      tags: [Intake & Recommendations]
+      summary: Start an intake and attach it to a session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            examples:
+              ex:
+                value:
+                  session_id: s_123
+                  problem_statement: "We want to expand into Malaysia and need a digital marketing push."
+                  context: { sector: "F&B", target_market: "MY", budget_sgd: 30000 }
+            schema:
+              type: object
+              required: [session_id, problem_statement]
+              properties:
+                session_id: { type: string }
+                problem_statement: { type: string }
+                context:
+                  type: object
+                  additionalProperties: true
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  session_id: { type: string }
+                  intake_id: { type: string }
+
+  /recommendations:
+    post:
+      tags: [Intake & Recommendations]
+      summary: Get solution recommendations for a problem statement
+      requestBody:
+        required: true
+        content:
+          application/json:
+            examples:
+              ex: { value: { session_id: s_123 } }
+            schema:
+              type: object
+              required: [session_id]
+              properties:
+                session_id: { type: string }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              examples:
+                ex:
+                  value:
+                    items:
+                      - id: sol_edg_iap_automation
+                        title: "Warehouse Process Automation"
+                        grant: EDG
+                        category: "Innovation & Productivity"
+                        tags: ["Automation"]
+                        rationale: "High fit vs. stated fulfilment bottlenecks; quantifiable productivity gains."
+                      - id: sol_mra_bd_my
+                        title: "In-market Business Development (Malaysia)"
+                        grant: MRA
+                        category: "Overseas Business Development"
+                        tags: ["In-market Business Development"]
+                        rationale: "Target market: MY; budget and timing align with MRA caps."
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/SolutionOption' }
+
+  /sessions/{sessionId}/solution:
+    post:
+      tags: [Solutions]
+      summary: Attach chosen solution to session (locks category/variant)
+      parameters: [ { $ref: '#/components/parameters/SessionId' } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            examples:
+              ex: { value: { solution_id: sol_edg_iap_automation } }
+            schema:
+              type: object
+              required: [solution_id]
+              properties:
+                solution_id: { type: string }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  session_id: { type: string }
+                  solution: { $ref: '#/components/schemas/SolutionOption' }
+
+  /sessions/{sessionId}/checklist:
+    get:
+      tags: [Checklist]
+      summary: Get tasks for this grant/use_case/solution
+      parameters: [ { $ref: '#/components/parameters/SessionId' } ]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              examples:
+                edg_iap:
+                  value:
+                    session_id: s_123
+                    grant: EDG
+                    tasks:
+                      - { id: "acra_bizfile", type: "upload", title: "ACRA BizFile" }
+                      - { id: "audited_financials", type: "upload", title: "Audited Financials" }
+                      - { id: "about_company", type: "draft", title: "About the Company" }
+                      - { id: "about_project", type: "draft", title: "About the Project", category: "Innovation & Productivity", section_variant: "about_project.i_and_p.automation" }
+                      - { id: "project_outcomes", type: "draft", title: "Project Outcomes" }
+                psg:
+                  value:
+                    session_id: s_777
+                    grant: PSG
+                    tasks:
+                      - { id: "vendor_quotation", type: "upload", title: "Vendor Quotation (Annex 3 match)" }
+                      - { id: "cost_breakdown", type: "upload", title: "Cost Breakdown" }
+                      - { id: "solution_description", type: "draft", title: "Solution Description", category: "IT" }
+                      - { id: "business_impact", type: "draft", title: "Business Impact", requires: ["vendor_quotation"] }
+              schema:
+                type: object
+                properties:
+                  session_id: { type: string }
+                  grant: { $ref: '#/components/schemas/GrantId' }
+                  tasks:
+                    type: array
+                    items: { $ref: '#/components/schemas/ChecklistItem' }
+
+  /sessions/{sessionId}/eligibility:
+    post:
+      tags: [Eligibility]
+      summary: Upsert eligibility facts for this session
+      parameters: [ { $ref: '#/components/parameters/SessionId' } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            examples:
+              edg: { value: { local_equity_pct: 45, turnover: 1200000, headcount: 18 } }
+              psg: { value: { local_equity_pct: 60, group_turnover: 80000000, used_in_singapore: true, no_payment_before_application: true } }
+              mra: { value: { local_equity_pct: 40, new_market_sales_3y_under_100k: true, group_headcount: 150 } }
+            schema: { $ref: '#/components/schemas/Eligibility' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  session_id: { type: string }
+                  eligibility: { $ref: '#/components/schemas/Eligibility' }
+
+  /evidence:
+    post:
+      tags: [Evidence]
+      summary: Upload evidence file (bind to session + label)
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [session_id, label, file]
+              properties:
+                session_id: { type: string }
+                label: { type: string, description: "Must match checklist upload id" }
+                file: { type: string, format: binary }
+      responses:
+        '201':
+          description: Stored
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EvidenceReceipt' }
+
+  /evidence/{sessionId}:
+    get:
+      tags: [Evidence]
+      summary: List evidence for session
+      parameters: [ { $ref: '#/components/parameters/SessionId' } ]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  session_id: { type: string }
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/EvidenceItem' }
+
+  /drafts:
+    post:
+      tags: [Drafts]
+      summary: Generate a draft section (grant-agnostic)
+      description: Selects pack by session grant/use_case/solution unless overridden.
+      parameters:
+        - in: header
+          name: X-Debug-Evidence
+          schema: { type: boolean, default: false }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            examples:
+              edg_about_project:
+                value:
+                  session_id: s_123
+                  section_id: "about_project"
+                  section_variant: "about_project.i_and_p.automation"
+                  inputs:
+                    tone: "Formal consultant voice"
+                    length_limit: 350
+                    evidence_labels: ["acra_bizfile","audited_financials"]
+              psg_impact:
+                value:
+                  session_id: s_777
+                  section_id: "business_impact"
+                  inputs:
+                    evidence_labels: ["vendor_quotation","cost_breakdown"]
+            schema: { $ref: '#/components/schemas/DraftRequest' }
+      responses:
+        '200':
+          description: Draft generated
+          headers:
+            x-prompt-pack:
+              schema: { type: string }
+              description: pack@version used (e.g., edg@1.2.0)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DraftResponse' }
+
+  /sessions/{sessionId}/validate:
+    post:
+      tags: [Validation]
+      summary: Run grant-specific validations for current state
+      parameters: [ { $ref: '#/components/parameters/SessionId' } ]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            examples:
+              all: { value: { scope: "all" } }
+              annex3: { value: { scope: "annex3", section_id: "business_impact" } }
+            schema:
+              type: object
+              properties:
+                scope: { type: string, enum: [eligibility, evidence, annex3, completeness, all], default: all }
+                section_id: { type: string }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              examples:
+                ex:
+                  value:
+                    checks:
+                      - code: "PSG.ELIG.LOCAL_EQUITY_MIN_30"
+                        level: "error"
+                        message: "Local equity below 30%."
+                        hint: "Update shareholders or switch to non-grant workflow."
+                        related_items: []
+                      - code: "PSG.ANNEX3.MISMATCH"
+                        level: "warning"
+                        message: "Quotation items do not match Annex 3."
+                        hint: "Ensure SKUs and unit prices match the approved package."
+                        related_items: ["vendor_quotation"]
+              schema: { $ref: '#/components/schemas/ValidationResult' }
+
+  /packs:
+    get:
+      tags: [Packs]
+      summary: List available packs
+      parameters:
+        - in: query
+          name: grant
+          schema: { $ref: '#/components/schemas/GrantId' }
+        - in: query
+          name: use_case
+          schema: { $ref: '#/components/schemas/UseCase' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/PackSummary' }
+
+  /catalog/vendors:
+    get:
+      tags: [Catalog & Vendor Docs]
+      summary: Search vendor solutions (mock or mirrored index)
+      parameters:
+        - in: query
+          name: q
+          schema: { type: string }
+        - in: query
+          name: category
+          schema: { type: string, enum: [IT, Equipment, Consultancy] }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              examples:
+                ex:
+                  value:
+                    items:
+                      - id: "vend_it_pos_abc"
+                        name: "ABC POS Cloud (Annex 3 Package A)"
+                        category: "IT"
+                        vendor: "ABC Systems Pte. Ltd."
+                        annex3_ref: "PSG-IT-12345-A"
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/VendorSolution' }
+
+  /vendor-docs:
+    post:
+      tags: [Catalog & Vendor Docs]
+      summary: Generate a vendor quotation/proposal draft (optional path)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            examples:
+              ex:
+                value:
+                  session_id: s_777
+                  vendor_solution_id: "vend_it_pos_abc"
+                  inputs: { seats: 10, locations: 2, term_months: 12 }
+            schema:
+              type: object
+              required: [session_id, vendor_solution_id]
+              properties:
+                session_id: { type: string }
+                vendor_solution_id: { type: string }
+                inputs:
+                  type: object
+                  additionalProperties: true
+      responses:
+        '201':
+          description: Draft vendor doc stored as evidence
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  file_id: { type: string }
+                  label: { type: string, example: "vendor_quotation" }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    SessionId:
+      in: path
+      name: sessionId
+      required: true
+      schema: { type: string }
+
+  schemas:
+    GrantId:
+      type: string
+      enum: [EDG, PSG, MRA]
+    UseCase:
+      type: string
+      enum: [proposal_builder, lead_generation]
+
+    SessionCreate:
+      type: object
+      required: [grant, use_case]
+      properties:
+        grant: { $ref: '#/components/schemas/GrantId' }
+        use_case: { $ref: '#/components/schemas/UseCase' }
+        company:
+          type: object
+          properties:
+            uen: { type: string }
+            name: { type: string }
+        metadata:
+          type: object
+          additionalProperties: true
+    Session:
+      type: object
+      properties:
+        session_id: { type: string }
+        grant: { $ref: '#/components/schemas/GrantId' }
+        use_case: { $ref: '#/components/schemas/UseCase' }
+        created_at: { type: string, format: date-time }
+        company:
+          type: object
+          properties:
+            uen: { type: string }
+            name: { type: string }
+        solution: { $ref: '#/components/schemas/SolutionOption' }
+        eligibility: { $ref: '#/components/schemas/Eligibility' }
+        metadata:
+          type: object
+          additionalProperties: true
+
+    SolutionOption:
+      type: object
+      required: [id, title, grant, category, tags, rationale]
+      properties:
+        id: { type: string }
+        title: { type: string }
+        grant: { $ref: '#/components/schemas/GrantId' }
+        category: { type: string, description: "EDG: Core/I&P/Market Access; PSG: IT/Equipment/Consultancy; MRA: pillar" }
+        tags:
+          type: array
+          items: { type: string }
+        rationale: { type: string }
+
+    ChecklistItem:
+      type: object
+      required: [id, type]
+      properties:
+        id: { type: string, description: "Section or evidence label, e.g., vendor_quotation, about_project" }
+        type: { type: string, enum: [upload, draft] }
+        title: { type: string }
+        help_text: { type: string }
+        category: { type: string }
+        section_variant: { type: string, description: "e.g., about_project.i_and_p.automation" }
+        requires:
+          type: array
+          items: { type: string }
+
+    Eligibility:
+      type: object
+      properties:
+        local_equity_pct: { type: number, minimum: 0, maximum: 100 }
+        turnover: { type: integer, minimum: 0 }
+        headcount: { type: integer, minimum: 0 }
+        group_turnover: { type: integer, minimum: 0 }
+        group_headcount: { type: integer, minimum: 0 }
+        new_market_sales_3y_under_100k: { type: boolean } # MRA
+        used_in_singapore: { type: boolean }               # PSG
+        no_payment_before_application: { type: boolean }   # PSG
+
+    EvidenceReceipt:
+      type: object
+      properties:
+        session_id: { type: string }
+        label: { type: string }
+        file_id: { type: string }
+        text_extracted: { type: boolean }
+
+    EvidenceItem:
+      type: object
+      properties:
+        label: { type: string }
+        filename: { type: string }
+        size_bytes: { type: integer }
+        uploaded_at: { type: string, format: date-time }
+
+    DraftRequest:
+      type: object
+      required: [session_id, section_id]
+      properties:
+        session_id: { type: string }
+        section_id: { type: string }
+        section_variant: { type: string, description: "If omitted, server infers from selected solution" }
+        inputs:
+          type: object
+          additionalProperties: true
+          properties:
+            tone: { type: string, default: "Formal consultant voice" }
+            length_limit: { type: integer, default: 350 }
+            evidence_labels:
+              type: array
+              items: { type: string }
+            pack_override:
+              type: string
+        debug:
+          type: object
+          properties:
+            return_evidence_snippet: { type: boolean, default: false }
+
+    DraftResponse:
+      type: object
+      properties:
+        section_id: { type: string }
+        framework: { type: string, description: "e.g., PAS, SCQA" }
+        evidence_used:
+          type: array
+          items: { type: string }
+        output: { type: string }
+        evaluation:
+          type: object
+          properties:
+            groundedness: { type: number, minimum: 0, maximum: 1 }
+            toxicity: { type: number, minimum: 0, maximum: 1 }
+
+    ValidationResult:
+      type: object
+      properties:
+        checks:
+          type: array
+          items:
+            type: object
+            properties:
+              code: { type: string }
+              level: { type: string, enum: [error, warning, info] }
+              message: { type: string }
+              hint: { type: string }
+              related_items:
+                type: array
+                items: { type: string }
+
+    PackSummary:
+      type: object
+      properties:
+        id: { type: string, description: "pack id, e.g., edg|psg|mra|leadgen" }
+        version: { type: string }
+        status: { type: string, enum: [approved, draft, archived] }
+        sections:
+          type: array
+          items: { type: string }
+
+    VendorSolution:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        category: { type: string, enum: [IT, Equipment, Consultancy] }
+        vendor: { type: string }
+        annex3_ref: { type: string }

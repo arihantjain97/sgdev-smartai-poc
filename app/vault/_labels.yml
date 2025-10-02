@@ -1,0 +1,112 @@
+# Canonical Evidence Labels Reference
+# ===================================
+# This file documents the standardized evidence labels available for use
+# in pack.yml files. These labels serve as the single source of truth
+# for evidence identification across all grant types.
+
+# Usage in pack.yml:
+# templates:
+#   section_name:
+#     evidence_hints:
+#       priority_labels: ["label1", "label2"]
+#       optional_labels: ["label3", "label4"]
+
+# Common/EDG Evidence Labels (shared between Common and EDG grants)
+# =================================================================
+common_edg:
+  acra_bizfile:
+    description: "ACRA BizFile extract containing company registration details"
+    type: "upload"
+    usage: "Company information, registration status, business activities"
+    priority: "high"
+    example_sections: ["about_company", "business_case"]
+    
+  audited_financials:
+    description: "Audited financial statements and company financials"
+    type: "upload"
+    usage: "Financial performance, revenue, costs, funding requirements"
+    priority: "high"
+    example_sections: ["business_case", "about_company", "project_milestones", "expansion_plan"]
+    
+  parent_consolidated_fs:
+    description: "Parent company consolidated financial statements"
+    type: "upload"
+    usage: "Parent company financial backing, group financial position"
+    priority: "medium"
+    example_sections: ["about_company", "business_case"]
+
+# PSG (Productivity Solutions Grant) Evidence Labels
+# ==================================================
+psg:
+  vendor_quotation:
+    description: "Vendor quotation matching Annex 3 pre-approved packages"
+    type: "upload"
+    usage: "Solution pricing, vendor details, package compliance"
+    priority: "high"
+    example_sections: ["vendor_quotation", "compliance_summary", "business_impact"]
+    
+  cost_breakdown:
+    description: "Detailed cost breakdown of the proposed solution"
+    type: "upload"
+    usage: "Cost analysis, line items, total pricing, value proposition"
+    priority: "high"
+    example_sections: ["cost_breakdown", "compliance_summary", "business_impact"]
+    
+  deployment_location_proof:
+    description: "Proof of deployment location (e.g., Singapore address)"
+    type: "upload"
+    usage: "Location verification, deployment site confirmation"
+    priority: "high"
+    example_sections: ["compliance_summary"]
+    
+  product_brochure:
+    description: "Product brochure or technical specification document"
+    type: "upload"
+    usage: "Product features, technical details, capabilities"
+    priority: "medium"
+    example_sections: ["solution_description", "compliance_summary"]
+    
+  annex3_package:
+    description: "Annex 3 pre-approved package documentation"
+    type: "upload"
+    usage: "Package compliance, pre-approval verification"
+    priority: "medium"
+    example_sections: ["compliance_summary"]
+
+# Cross-Grant Labels (if any)
+# ============================
+# Note: Common/EDG labels are shared between Common and EDG grants.
+# PSG labels are specific to PSG grants only.
+
+# Label Naming Conventions
+# =========================
+# - Use snake_case for all label names
+# - Be descriptive and specific
+# - Avoid abbreviations unless widely understood (e.g., "fs" for financial statements)
+# - Group related labels with common prefixes when applicable
+
+# Priority Guidelines
+# ===================
+# high: Essential evidence that should always be included when available
+# medium: Important evidence that adds value but not strictly required
+# low: Supplementary evidence that provides additional context
+
+# Evidence Hints Configuration
+# =============================
+# Use in pack.yml templates:
+#
+# evidence_hints:
+#   priority_labels: ["label1", "label2"]  # Always try to use these first
+#   optional_labels: ["label3", "label4"]  # Use if available and helpful
+#
+# The system will attempt to load evidence in priority order and stop
+# when the character cap (default 6000) is reached.
+
+# Adding New Labels
+# ==================
+# When adding new evidence labels:
+# 1. Add to this file with full documentation
+# 2. Update pack.yml files to use the new labels
+# 3. Update OpenAPI specification if needed
+# 4. Add to composer.py label mapping if referenced in templates
+# 5. Create golden test data using the new labels

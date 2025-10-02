@@ -38,3 +38,12 @@ templates:
     file: templates/business_impact.md
     rubric:
       required_tokens: ["Situation","Complication","Question","Answer"]
+
+  compliance_summary:
+    retrieval_tags: ["psg","compliance","summary"]
+    file: templates/compliance_summary.md
+    rubric:
+      required_tokens: ["Annex","Deployment","Payment","Cost"]
+    evidence_hints:
+      priority_labels: ["vendor_quotation","cost_breakdown","deployment_location_proof"]
+      optional_labels: ["annex3_package","product_brochure"]

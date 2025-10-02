@@ -59,14 +59,15 @@ async def checklist(sid: str):
       {"id":"acra_extract", "type":"upload"},
       {"id":"audited_financials","type":"upload"},
       {"id":"vendor_quotation","type":"upload"},
-      {"id":"consultancy_scope","type":"draft"},
-      {"id":"business_case","type":"draft"}
+      {"id":"consultancy_scope","type":"draft", "section_variant": None},
+      {"id":"business_case","type":"draft", "section_variant": None}
     ]
     return {"session_id":sid,"tasks":tasks}
 
 class DraftReq(BaseModel):
     session_id: str
     section_id: str
+    section_variant: str | None = None
     inputs: dict = {}
 
 
