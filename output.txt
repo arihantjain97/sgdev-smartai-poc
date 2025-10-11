@@ -1,30 +1,1073 @@
 Directory Structure:
 ==================================================
-└── vault/
-    ├── EDG.v1/
-    │   ├── golden/
-    │   │   └── business_case.jsonl
-    │   ├── templates/
-    │   │   ├── business_case.manufacturing.md
-    │   │   ├── business_case.md
-    │   │   └── consultancy_scope.md
-    │   └── pack.yml
-    └── PSG.v1/
-        ├── golden/
-        │   └── business_impact.jsonl
-        ├── templates/
-        │   ├── business_impact.md
-        │   ├── cost_breakdown.md
-        │   ├── solution_description.md
-        │   └── vendor_quotation.md
-        └── pack.yml
+└── app/
+    ├── __pycache__/
+    │   └── __init__.cpython-310.pyc
+    ├── manifests/
+    │   └── edg.yml
+    ├── scripts/
+    │   └── load_prompt_packs.py
+    ├── services/
+    │   ├── __pycache__/
+    │   │   ├── __init__.cpython-310.pyc
+    │   │   ├── appcfg.cpython-310.pyc
+    │   │   ├── composer.cpython-310.pyc
+    │   │   └── prompt_vault.cpython-310.pyc
+    │   ├── .DS_Store
+    │   ├── __init__.py
+    │   ├── aoai.py
+    │   ├── appcfg.py
+    │   ├── composer.py
+    │   ├── evaluator.py
+    │   ├── prompt_vault.py
+    │   ├── secrets.py
+    │   ├── storage.py
+    │   └── taxonomy.py
+    ├── vault/
+    │   ├── EDG.v1/
+    │   │   ├── golden/
+    │   │   │   ├── about_company.jsonl
+    │   │   │   ├── about_project.core.jsonl
+    │   │   │   ├── about_project.i_and_p.automation.jsonl
+    │   │   │   ├── business_case.jsonl
+    │   │   │   ├── expansion_plan.market_access.jsonl
+    │   │   │   ├── project_milestones.jsonl
+    │   │   │   └── project_outcomes.jsonl
+    │   │   ├── templates/
+    │   │   │   ├── about_company.md
+    │   │   │   ├── about_project.core.md
+    │   │   │   ├── about_project.i_and_p.automation.md
+    │   │   │   ├── about_project.i_and_p.product_development.md
+    │   │   │   ├── business_case.manufacturing.md
+    │   │   │   ├── business_case.md
+    │   │   │   ├── consultancy_scope.md
+    │   │   │   ├── expansion_plan.market_access.md
+    │   │   │   ├── project_milestones.md
+    │   │   │   └── project_outcomes.md
+    │   │   └── pack.yml
+    │   ├── PSG.v1/
+    │   │   ├── golden/
+    │   │   │   ├── business_impact.jsonl
+    │   │   │   ├── cost_breakdown.jsonl
+    │   │   │   ├── solution_description.jsonl
+    │   │   │   └── vendor_quotation.jsonl
+    │   │   ├── templates/
+    │   │   │   ├── business_impact.md
+    │   │   │   ├── compliance_summary.md
+    │   │   │   ├── cost_breakdown.md
+    │   │   │   ├── solution_description.md
+    │   │   │   └── vendor_quotation.md
+    │   │   └── pack.yml
+    │   └── _labels.yml
+    ├── .DS_Store
+    ├── __init__.py
+    └── main.py
 
-File: EDG.v1/golden/business_case.jsonl
+File: .DS_Store
+[.DS_Store: start]
+[Binary file - 6148 bytes]
+[.DS_Store: end]
+
+File: __init__.py
+[__init__.py: start]
+[__init__.py: end]
+
+File: __pycache__/__init__.cpython-310.pyc
+[__init__.cpython-310.pyc: start]
+[Binary file - 155 bytes]
+[__init__.cpython-310.pyc: end]
+
+File: main.py
+[main.py: start]
+from fastapi import FastAPI, UploadFile, Form, Query, HTTPException, Response
+from pydantic import BaseModel
+from app.services import storage, taxonomy, composer, evaluator
+from app.services.aoai import chat_completion
+from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
+from app.services.appcfg import get_bool, get as cfg_get
+
+#test
+
+app = FastAPI(title="SmartAI Proposal Builder (Dev)")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[ "https://wonderful-pebble-0bc6fc600.1.azurestaticapps.net" ],
+    allow_methods=["*"], allow_headers=["*"]
+)
+
+class NoCache(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        resp = await call_next(request)
+        resp.headers["Cache-Control"] = "no-store"
+        return resp
+app.add_middleware(NoCache)
+
+# health + root so the platform has a quick 200
+@app.get("/")
+def root():
+    return {"ok": True, "service": "smartai-api"}
+
+@app.get("/health")
+def health():
+    return {"ok": True}
+
+@app.get("/v1/config/features")
+def features():
+    return {
+        "feature_psg_enabled": get_bool("FEATURE_PSG_ENABLED", False),
+        "model_worker": cfg_get("MODEL.WORKER", "gpt-4.1-mini-worker"),
+        "prompt_pack_active": cfg_get("PROMPT_PACK_ACTIVE", "edg@latest-approved"),
+    }
+
+class SessionCreate(BaseModel):
+    grant: str = "EDG"
+    company_name: str | None = None
+
+@app.post("/v1/session")
+async def create_session(body: SessionCreate):
+    table = storage.sessions()
+    from uuid import uuid4; sid = f"s_{uuid4().hex[:8]}"
+    entity = {"PartitionKey":"session","RowKey":sid,"grant":body.grant,"status":"new"}
+    table.upsert_entity(entity)
+    return {"session_id": sid}
+
+@app.get("/v1/session/{sid}/checklist")
+async def checklist(sid: str):
+    # Read the session to know which grant this session is for
+    try:
+        sess = storage.sessions().get_entity(partition_key="session", row_key=sid)
+        grant = (sess.get("grant") or "EDG").upper()
+    except Exception:
+        # If session not found or table hiccups, fall back safely
+        grant = "EDG"
+
+    if grant == "PSG":
+        # PSG: uploads + drafts (no variant needed)
+        tasks = [
+            {"id": "vendor_quotation", "type": "upload"},
+            {"id": "cost_breakdown", "type": "upload"},
+            {"id": "business_impact", "type": "draft", "section_variant": None},
+            {"id": "solution_description", "type": "draft", "section_variant": None},
+            # (optional) compliance summary draft for your reviewers/UI
+            {"id": "compliance_summary", "type": "draft", "section_variant": None},
+        ]
+    else:
+        # EDG: uploads + drafts (WITH a variant example)
+        tasks = [
+            {"id": "acra_bizfile", "type": "upload"},
+            {"id": "audited_financials", "type": "upload"},
+            {"id": "consultancy_scope", "type": "draft", "section_variant": None},
+            # Example: drive the "About the Project – I&P (Automation)" variant
+            {"id": "about_project", "type": "draft",
+             "section_variant": "about_project.i_and_p.automation"},
+            # (optional) include a Market Access draft variant
+            {"id": "expansion_plan", "type": "draft",
+             "section_variant": "expansion_plan.market_access"},
+        ]
+
+    return {"session_id": sid, "grant": grant, "tasks": tasks}
+
+class DraftReq(BaseModel):
+    session_id: str
+    section_id: str
+    section_variant: str | None = None
+    inputs: dict = {}
+
+
+@app.post("/v1/grants/edg/draft")
+async def draft(req: DraftReq, response: Response):
+    fw = taxonomy.pick_framework(req.section_id)
+
+    # --- Evidence selection rules ---
+    # 1) If caller provides inputs.evidence_labels (list), use that order.
+    # 2) Else if caller provides legacy inputs.evidence_label (single), use it.
+    # 3) Else use sensible defaults per section.
+    DEFAULT_EVIDENCE_BY_SECTION = {
+        "business_case": ["acra_bizfile", "audited_financials"],
+        "consultancy_scope": ["acra_bizfile"]
+    }
+    labels = None
+    try:
+        labels = req.inputs.get("evidence_labels")
+        if isinstance(labels, str):
+            labels = [labels]
+    except Exception:
+        labels = None
+    if not labels:
+        single = req.inputs.get("evidence_label")
+        if single:
+            labels = [single]
+    if not labels:
+        labels = DEFAULT_EVIDENCE_BY_SECTION.get(req.section_id, [req.section_id])
+
+    # --- Load snippets in order; cap total length ---
+    MAX_CHARS = int(req.inputs.get("evidence_char_cap", 6000))
+    parts = []
+    evidence_used = []
+    for label in labels:
+        blob_name = f"{req.session_id}_{label}.txt"
+        try:
+            txt = storage.get_text("evidence", blob_name)
+            if not txt:
+                continue
+            header = f"\n\n--- [evidence:{label}] ---\n"
+            parts.append(header + txt)
+            evidence_used.append(label)
+            if sum(len(p) for p in parts) >= MAX_CHARS:
+                break
+        except Exception:
+            # Missing evidence file is OK; skip
+            continue
+
+    snippet = ""
+    if parts:
+        joined = "".join(parts)
+        snippet = joined[:MAX_CHARS]
+
+    # Surface the labels into inputs so the prompt can mention them
+    if evidence_used:
+        req.inputs["evidence_labels"] = evidence_used
+        req.inputs["evidence_label"] = ",".join(evidence_used)  # back-compat for any single-label template
+
+    try:
+        msgs, packver, evidence_order_used = composer.compose_instruction(
+            req.section_id, 
+            fw, 
+            req.inputs or {}, 
+            snippet,
+            section_variant=req.section_variant
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Prompt Vault error: {type(e).__name__}: {e}")
+    response.headers["x-prompt-pack"] = packver
+    try:
+        out = await chat_completion(msgs, use="worker")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=f"Model deployment error: {str(e)}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"AI service error: {str(e)}")
+    
+    ev = evaluator.score(out, require_tokens=["source:"] if any(c.isdigit() for c in out) else None)
+    return {
+        "section_id": req.section_id,
+        "framework": fw,
+        "evidence_used": evidence_order_used,  # Use the ordered labels from composer
+        "output": out,
+        "evaluation": ev
+    }
+
+def _strip_label(sid: str, name: str) -> str:
+    # safe strip without relying on removeprefix/removesuffix
+    pref = f"{sid}_"
+    if name.startswith(pref):
+        name = name[len(pref):]
+    if name.endswith(".txt"):
+        name = name[:-4]
+    return name
+
+@app.get("/v1/debug/evidence/{sid}")
+def debug_list_evidence(sid: str, preview: int = Query(0, ge=0, le=4000)):
+    try:
+        # 1) list blobs
+        blobs = storage.list_blobs("evidence", prefix=f"{sid}_", suffix=".txt")
+
+        # 2) optionally read previews
+        items = []
+        for name in blobs:
+            label = _strip_label(sid, name)
+            txt = storage.get_text("evidence", name) if preview else ""
+            items.append({
+                "name": name,
+                "label": label,
+                "chars": (len(txt) if txt else None),
+                "preview": (txt[:preview] if txt else "")
+            })
+
+        return {"session_id": sid, "items": items}
+
+    except Exception as e:
+        # Return a clear 500 body so you can see the exact cause in the browser
+        raise HTTPException(status_code=500, detail=f"debug_list_evidence failed: {type(e).__name__}: {e}")
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
+[main.py: end]
+
+File: manifests/edg.yml
+[edg.yml: start]
+# EDG (Enterprise Data Governance) Configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: edg-config
+  namespace: default
+data:
+  # Configuration settings for EDG
+  environment: "development"
+  log_level: "info"
+  max_retries: 3
+  timeout: 30
+[edg.yml: end]
+
+File: scripts/load_prompt_packs.py
+[load_prompt_packs.py: start]
+import os, json, sys, pathlib, hashlib, yaml, re
+from azure.core.credentials import AzureKeyCredential
+from azure.search.documents import SearchClient
+
+SEARCH_ENDPOINT = os.environ["AZURE_SEARCH_ENDPOINT"].rstrip("/")
+SEARCH_KEY      = os.environ["AZURE_SEARCH_ADMIN_KEY"]
+INDEX_NAME      = os.environ.get("AZURE_SEARCH_INDEX","smartai-prompts")
+
+root = pathlib.Path(__file__).resolve().parents[1]  # repo root
+
+def read_text(p: pathlib.Path) -> str:
+    return p.read_text(encoding="utf-8")
+
+
+_ALLOWED = re.compile(r"[^A-Za-z0-9_\-=]")  # Azure Search key charset
+
+def _safe(s: str) -> str:
+    # map anything not allowed to "_"
+    return _ALLOWED.sub("_", s)
+
+def doc_id(pack_id: str, version: str, section_id: str, tmpl_key: str) -> str:
+    """
+    Stable, collision-proof document id:
+      - unique on (pack_id, version, section_id, tmpl_key)
+      - independent of filename so you can reuse/rename files without creating new docs
+    """
+    version_s  = version.replace(".", "_")          # e.g. "1.0.1" -> "1_0_1"
+    pack_s     = _safe(pack_id)
+    section_s  = _safe(section_id)
+    tmpl_s     = _safe(tmpl_key)
+
+    # Basis excludes filename on purpose; tmpl_key is the disambiguator for variants
+    basis = f"{pack_id}|{version}|{section_id}|{tmpl_key}"
+    h = hashlib.sha1(basis.encode("utf-8")).hexdigest()[:12]
+
+    return f"{pack_s}-{version_s}-{section_s}-{tmpl_s}-{h}"
+
+
+def pack_to_docs(pack_dir: pathlib.Path):
+    yml = yaml.safe_load(read_text(pack_dir / "pack.yml"))
+    pack_id = yml["pack_id"]
+    version = yml["version"]
+    pack_status = yml.get("status","draft")
+    labels  = yml.get("labels",{})
+    templates = yml.get("templates",{})
+
+    for tmpl_key, t in templates.items():
+        file_rel = t["file"]
+        text     = read_text(pack_dir / file_rel)
+        tags     = t.get("retrieval_tags", [])
+        rubric   = t.get("rubric", {})
+
+        # Allow explicit override; otherwise use the YAML key as section_id
+        section_id = t.get("section_id", tmpl_key)
+        
+        # Honor per-template status (so each doc gets its own status)
+        tmpl_status = t.get("status", pack_status)  # <-- use template-level status if present
+
+        meta = {
+            "pack_id": pack_id,
+            "version": version,
+            "labels": labels,
+            "section_id": section_id,
+            "rubric": rubric,
+            "template_key": tmpl_key,   # helpful for debugging
+            "file": file_rel,           # optional: keep for traceability
+        }
+
+        yield {
+            "id": doc_id(pack_id, version, section_id, tmpl_key),  # 👈 uses tmpl_key
+            "pack_id": pack_id,
+            "version": version,
+            "status": tmpl_status,  # <-- not the pack-level status
+            "section_id": section_id,
+            "retrieval_tags": tags,
+            "template_text": text,
+            "metadata_json": json.dumps(meta, ensure_ascii=False),
+        }
+
+def main():
+    client = SearchClient(SEARCH_ENDPOINT, INDEX_NAME, AzureKeyCredential(SEARCH_KEY))
+    docs = []
+    for pack_dir in (root / "vault").glob("*.*"):
+        if not (pack_dir / "pack.yml").exists():
+            continue
+        docs.extend(list(pack_to_docs(pack_dir)))
+
+    # Upload all docs (both approved & draft) so demotions take effect
+    r = client.upload_documents(docs)
+    failed = [x for x in r if not x.succeeded]
+    if failed:
+        print("Some docs failed:", failed, file=sys.stderr)
+        sys.exit(2)
+
+    # Optional: visibility
+    n_total = len(docs)
+    n_approved = sum(1 for d in docs if d["status"] == "approved")
+    print(f"Uploaded {n_total} docs ({n_approved} approved) to {INDEX_NAME}")
+
+if __name__ == "__main__":
+    main()
+[load_prompt_packs.py: end]
+
+File: services/.DS_Store
+[.DS_Store: start]
+[Binary file - 6148 bytes]
+[.DS_Store: end]
+
+File: services/__init__.py
+[__init__.py: start]
+[__init__.py: end]
+
+File: services/__pycache__/__init__.cpython-310.pyc
+[__init__.cpython-310.pyc: start]
+[Binary file - 164 bytes]
+[__init__.cpython-310.pyc: end]
+
+File: services/__pycache__/appcfg.cpython-310.pyc
+[appcfg.cpython-310.pyc: start]
+[Binary file - 1254 bytes]
+[appcfg.cpython-310.pyc: end]
+
+File: services/__pycache__/composer.cpython-310.pyc
+[composer.cpython-310.pyc: start]
+[Binary file - 4636 bytes]
+[composer.cpython-310.pyc: end]
+
+File: services/__pycache__/prompt_vault.cpython-310.pyc
+[prompt_vault.cpython-310.pyc: start]
+[Binary file - 2586 bytes]
+[prompt_vault.cpython-310.pyc: end]
+
+File: services/aoai.py
+[aoai.py: start]
+# app/services/aoai.py
+import os, httpx
+from .secrets import get_secret
+from .appcfg import get
+
+def _get_endpoint() -> str:
+    ep = os.getenv("AZURE_OPENAI_ENDPOINT")
+    if not ep:
+        raise RuntimeError("AOAI not configured: set AZURE_OPENAI_ENDPOINT")
+    return ep.rstrip("/")
+
+# Pull key from Key Vault at runtime (cached)
+def _headers():
+    return {"api-key": get_secret("aoai-key-dev"), "Content-Type": "application/json"}
+
+def _deployment(use: str) -> str:
+    if use == "manager":
+        dep = get("MODEL.MANAGER", default="gpt-4.1-manager")
+    else:
+        dep = get("MODEL.WORKER", default="gpt-4.1-mini-worker")
+    return dep.strip()
+
+async def chat_completion(messages, *, use="worker", max_tokens=800, temperature=0.2, timeout=60):
+    endpoint = _get_endpoint()
+    dep = _deployment(use)
+    #url = f"{endpoint}/openai/deployments/{dep}/chat/completions?api-version=2024-10-01-preview"
+    url = f"{endpoint}/openai/deployments/{dep}/chat/completions?api-version=2024-02-15-preview"  # <= use a known-stable version
+
+    payload = {"messages": messages, "max_tokens": max_tokens, "temperature": temperature}
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        r = await client.post(url, headers=_headers(), json=payload)
+    if r.status_code == 404:
+        raise ValueError(f"MODEL.WORKER/manager points to unknown deployment: '{dep}'")
+    try:
+        r.raise_for_status()
+    except httpx.HTTPStatusError as e:
+        # Surface the AOAI body so you see the real reason in your 500
+        raise RuntimeError(f"AOAI {r.status_code}: {r.text[:500]}") from e
+
+    try:
+        data = r.json()
+    except Exception:
+        raise RuntimeError(f"AOAI returned non-JSON ({r.status_code}): {r.text[:500]}")
+    return data["choices"][0]["message"]["content"]
+[aoai.py: end]
+
+File: services/appcfg.py
+[appcfg.py: start]
+# app/services/appcfg.py
+import os, time
+from typing import Optional
+from azure.identity import DefaultAzureCredential
+from azure.appconfiguration import AzureAppConfigurationClient
+
+_ENDPOINT = os.environ["APPCONFIG_ENDPOINT"]
+_LABEL   = os.environ.get("APPCONFIG_LABEL", None)
+_cred    = DefaultAzureCredential()
+_client  = AzureAppConfigurationClient(_ENDPOINT, credential=_cred)
+
+_cache: dict[tuple[str, Optional[str]], tuple[str, float]] = {}  # (key,label) -> (val, expires)
+
+def get(key: str, default: Optional[str] = None, *, ttl_seconds: int = 30) -> str:
+    now = time.time()
+    k = (key, _LABEL)
+    if k in _cache and _cache[k][1] > now: return _cache[k][0]
+    try:
+        cfg = _client.get_configuration_setting(key=key, label=_LABEL)
+        val = cfg.value
+    except Exception:
+        val = default
+    _cache[k] = (val, now + ttl_seconds)
+    return val
+
+def get_bool(key: str, default: bool = False) -> bool:
+    v = get(key, None)
+    if v is None: return default
+    return str(v).lower() in ("1","true","yes","on")
+[appcfg.py: end]
+
+File: services/composer.py
+[composer.py: start]
+# composer.py
+from .prompt_vault import retrieve_template
+from .appcfg import get as cfg_get
+
+import re
+from typing import Dict, List, Tuple, Any, Optional
+
+# --- tiny mustache-ish helpers (no external deps) ----------------------------
+
+_BLOCK_OPEN = re.compile(r"{{#\s*labels\.([a-zA-Z0-9_]+)\s*}}")
+_BLOCK_CLOSE = re.compile(r"{{/\s*labels\.([a-zA-Z0-9_]+)\s*}}")
+
+def _render_label_blocks(text: str, labels: Dict[str, str]) -> str:
+    """
+    Supports:
+      {{#labels.key}} ... [source:{{labels.key}}] ... {{/labels.key}}
+    If labels[key] exists, keep inner and replace {{labels.key}} with the value.
+    Else, drop the whole block.
+    """
+    # Find blocks and resolve from inside out
+    out = []
+    stack = []
+    i = 0
+    while i < len(text):
+        m_open = _BLOCK_OPEN.search(text, i)
+        m_close = _BLOCK_CLOSE.search(text, i)
+
+        if m_open and (not m_close or m_open.start() < m_close.start()):
+            # Push current segment
+            out.append(text[i:m_open.start()])
+            stack.append((m_open.group(1), len(out)))  # key, insertion index
+            out.append("")  # placeholder for block content
+            i = m_open.end()
+        elif m_close and stack:
+            key = m_close.group(1)
+            blk_key, idx = stack.pop()
+            # current segment inside the block is out[idx]
+            block_inner = "".join(out[idx:]) + text[i:m_close.start()]
+            # truncate to idx (remove accumulated inner)
+            out = out[:idx]
+            if blk_key == key and key in labels:
+                # substitute {{labels.key}} -> value
+                block_inner = re.sub(r"{{\s*labels\."+re.escape(key)+r"\s*}}", labels[key], block_inner)
+                out.append(block_inner)
+            # else: drop the whole block (append nothing)
+            i = m_close.end()
+        else:
+            # no more blocks
+            out.append(text[i:])
+            break
+
+    rendered = "".join(out)
+    # Replace any remaining simple {{labels.key}} occurrences
+    for k, v in labels.items():
+        rendered = re.sub(r"{{\s*labels\."+re.escape(k)+r"\s*}}", v, rendered)
+    # Remove any unresolved label refs safely
+    rendered = re.sub(r"{{\s*labels\.[a-zA-Z0-9_]+\s*}}", "", rendered)
+    # Clean up any double spaces that might have been left behind
+    rendered = re.sub(r"\s+", " ", rendered).strip()
+    return rendered
+
+# --- evidence label helpers ---------------------------------------------------
+
+_LABEL_HEAD = re.compile(r'---\s*\[evidence:([^\]]+)\]\s*---')
+
+def _extract_labels_from_snippet(snippet: str) -> List[str]:
+    return _LABEL_HEAD.findall(snippet or "")
+
+def _ordered_labels(
+    available: List[str],
+    hints: Dict[str, Any],
+    explicit: List[str]
+) -> List[str]:
+    seen = set()
+    order: List[str] = []
+
+    # priority -> optional -> explicit (but keep de-dup and must exist)
+    for src in (hints.get("priority_labels") or []):
+        if src in available and src not in seen:
+            seen.add(src); order.append(src)
+    for src in (hints.get("optional_labels") or []):
+        if src in available and src not in seen:
+            seen.add(src); order.append(src)
+    for src in (explicit or []):
+        if src in available and src not in seen:
+            seen.add(src); order.append(src)
+
+    # append any remaining available labels
+    for src in available:
+        if src not in seen:
+            seen.add(src); order.append(src)
+    return order
+
+def _labels_map_from_available(avail: List[str]) -> Dict[str, str]:
+    m: Dict[str, str] = {}
+    # common
+    if "acra_bizfile" in avail:           m["registry"] = "acra_bizfile"
+    if "audited_financials" in avail:     m["financials"] = "audited_financials"
+    # PSG
+    if "vendor_quotation" in avail:       m["vendor_quote"] = "vendor_quotation"
+    if "cost_breakdown" in avail:         m["costs"] = "cost_breakdown"
+    if "deployment_location_proof" in avail: m["deployment_proof"] = "deployment_location_proof"
+    if "annex3_package" in avail:         m["annex3_package"] = "annex3_package"
+    # market/evidence hints
+    if "market_analysis" in avail:        m["market_analysis"] = "market_analysis"
+    if "consultant_proposal" in avail:    m["consultant_proposal"] = "consultant_proposal"
+    return m
+
+# --- main entrypoint ----------------------------------------------------------
+
+def compose_instruction(
+    section_id: str,
+    framework: str,
+    inputs: dict,
+    evidence_snippet: str = "",
+    *,
+    section_variant: Optional[str] = None,
+    pack_hint: Optional[str] = None,
+) -> Tuple[List[Dict[str, str]], str, List[str]]:
+    """
+    Returns (messages, pack_header, evidence_order_used)
+    - messages: for chat completion
+    - pack_header: 'pack@version' string (for x-prompt-pack)
+    - evidence_order_used: the labels we prioritized
+    """
+
+    style = inputs.get("style", "Formal, consultant voice")
+    length = int(inputs.get("length_limit", 350))
+    grant = (inputs.get("grant") or inputs.get("grant_id") or "edg").lower()
+
+    # tags help retrieval choose variant-specific prompts too
+    tags = [section_id, framework.lower(), grant] + list(inputs.get("tags", []))
+    if section_variant:
+        # add variant tokens to help retrieval ranking
+        tags += section_variant.replace(".", " ").replace("__", " ").split()
+
+    # Retrieve template (+metadata) with awareness of variant & pack if provided
+    tpl_obj = retrieve_template(
+        section_id,
+        tags=tags,
+        section_variant=section_variant,   # <-- supports Day-7 delta
+        pack_hint=pack_hint
+    ) or {}
+
+    tpl = tpl_obj.get("template") or ""
+    metadata = tpl_obj.get("metadata", {})
+    pack_header = f"{tpl_obj.get('pack_id','unknown')}@{tpl_obj.get('version','0.0.0')}"
+
+    # Evidence selection
+    hints = metadata.get("evidence_hints", {}) or {}
+    available = _extract_labels_from_snippet(evidence_snippet)
+
+    # if caller passed explicit labels but snippet is empty, still respect explicit
+    if not available and inputs.get("evidence_labels"):
+        # allow composer to order explicit labels by hints anyway
+        available = list(dict.fromkeys(inputs["evidence_labels"]))  # preserve order, de-dup
+
+    chosen_order = _ordered_labels(
+        available=available,
+        hints=hints,
+        explicit=inputs.get("evidence_labels", [])
+    )
+
+    # Build labels map for optional blocks
+    labels_map = _labels_map_from_available(chosen_order)
+
+    # Evidence window
+    cap_cfg = cfg_get("EVIDENCE_CHAR_CAP")
+    cap = int(cap_cfg) if str(cap_cfg).isdigit() else 6000
+    evidence_window = (evidence_snippet or "")[: cap]
+
+    # Fill core vars first (leave labels blocks untouched here)
+    # We use a lightweight replace for {{framework}}, {{style}}, {{length_limit}}, {{evidence_window}}
+    def _kv_replace(s: str, kv: Dict[str, str]) -> str:
+        for k, v in kv.items():
+            s = s.replace("{{" + k + "}}", str(v))
+        return s
+
+    prompt_text = _kv_replace(tpl, {
+        "framework": framework,
+        "style": style,
+        "length_limit": str(length),
+        "evidence_window": evidence_window
+    })
+
+    # Render optional label blocks + substitute {{labels.*}}
+    prompt_text = _render_label_blocks(prompt_text, labels_map)
+
+    # Final messages; keep system brief and generic to avoid over-constraining the template
+    messages = [
+        {
+            "role": "system",
+            "content": "You are a grant consultant. Use only the provided evidence; cite factual claims with [source:<label>]."
+        },
+        {
+            "role": "user",
+            "content": prompt_text
+        }
+    ]
+
+    return messages, pack_header, chosen_order
+[composer.py: end]
+
+File: services/evaluator.py
+[evaluator.py: start]
+def score(text:str, *, require_tokens=None, max_words=400):
+    ok = True; fails=[]
+    if len(text.split()) > max_words: ok=False; fails.append("length_cap")
+    if require_tokens:
+        for tok in require_tokens:
+            if tok.lower() not in text.lower():
+                ok=False; fails.append(f"missing:{tok}")
+    return {"score": 85 if ok else 55, "fails": fails}
+[evaluator.py: end]
+
+File: services/prompt_vault.py
+[prompt_vault.py: start]
+# app/services/prompt_vault.py
+import os, time, json
+from typing import Dict, List, Tuple, Optional
+from azure.core.credentials import AzureKeyCredential
+from azure.search.documents import SearchClient
+from .appcfg import get as cfg_get
+
+_SEARCH_ENDPOINT = os.environ["AZURE_SEARCH_ENDPOINT"].rstrip("/")
+_SEARCH_KEY      = os.environ["AZURE_SEARCH_QUERY_KEY"]  # use *query* key in app svc
+_INDEX           = os.environ.get("AZURE_SEARCH_INDEX","smartai-prompts")
+
+_client = SearchClient(_SEARCH_ENDPOINT, _INDEX, AzureKeyCredential(_SEARCH_KEY))
+
+_cache: Dict[Tuple[str,str,str], Tuple[dict,float]] = {}
+# key=(pack,ver,section) -> (doc, expires)
+
+def _active_pack() -> Tuple[str,str]:
+    v = cfg_get("PROMPT_PACK_ACTIVE", "edg@latest-approved")
+    if "@" not in v: return v, "latest-approved"
+    p, ver = v.split("@",1)
+    return p, ver
+
+def _cache_get(pack, ver, section) -> Optional[dict]:
+    key = (pack, ver, section)
+    item = _cache.get(key)
+    if item and item[1] > time.time():
+        return item[0]
+    return None
+
+def _cache_set(pack, ver, section, doc, ttl=30):
+    _cache[(pack,ver,section)] = (doc, time.time()+ttl)
+
+def retrieve_template(section_id: str, tags: Optional[List[str]] = None, section_variant: Optional[str] = None, pack_hint: Optional[str] = None) -> dict:
+    pack, ver = _active_pack()
+    cached = _cache_get(pack, ver, section_id)
+    if cached:
+        return cached
+
+    flt = f"pack_id eq '{pack}' and status eq 'approved' and section_id eq '{section_id}'"
+    if ver != "latest-approved":
+        flt += f" and version eq '{ver}'"
+
+    search_text = " ".join(tags or [section_id])
+
+    # ONLY ask for fields that are retrievable in your index
+    SELECT_FIELDS = ["template_text", "metadata_json"]
+
+    results = _client.search(
+        search_text=search_text,
+        filter=flt,
+        top=3,
+        query_type="simple",
+        select=SELECT_FIELDS,
+    )
+
+    hit = None
+    for d in results:
+        meta = {}
+        try:
+            meta = json.loads(d.get("metadata_json") or "{}")
+        except Exception:
+            meta = {}
+        hit = {
+            "template": d.get("template_text", ""),
+            "pack_id": meta.get("pack_id"),      # <— from metadata_json
+            "version": meta.get("version"),      # <— from metadata_json
+            "metadata": meta,
+        }
+        break
+
+    if not hit:
+        # Fallback search (keep the same select)
+        results = _client.search(
+            search_text=section_id,
+            filter=f"pack_id eq '{pack}' and status eq 'approved' and section_id eq '{section_id}'",
+            top=1,
+            select=SELECT_FIELDS,
+        )
+        for d in results:
+            meta = {}
+            try:
+                meta = json.loads(d.get("metadata_json") or "{}")
+            except Exception:
+                meta = {}
+            hit = {
+                "template": d.get("template_text", ""),
+                "pack_id": meta.get("pack_id"),
+                "version": meta.get("version"),
+                "metadata": meta,
+            }
+            break
+
+    if not hit:
+        raise LookupError(f"No template found for {pack}@{ver}:{section_id}")
+
+    _cache_set(pack, ver, section_id, hit)
+    return hit
+[prompt_vault.py: end]
+
+File: services/secrets.py
+[secrets.py: start]
+# app/services/secrets.py
+import os, time
+from typing import Optional
+from azure.identity import DefaultAzureCredential
+from azure.keyvault.secrets import SecretClient
+
+_KV_URI = os.environ["KEYVAULT_URI"]
+_cred = DefaultAzureCredential()
+_client = SecretClient(vault_url=_KV_URI, credential=_cred)
+
+_cache: dict[str, tuple[str, float]] = {}  # name -> (value, expires_at)
+
+def get_secret(name: str, ttl_seconds: int = 900) -> str:
+    now = time.time()
+    if name in _cache and _cache[name][1] > now:
+        return _cache[name][0]
+    val = _client.get_secret(name).value
+    _cache[name] = (val, now + ttl_seconds)
+    return val
+[secrets.py: end]
+
+File: services/storage.py
+[storage.py: start]
+import os
+from azure.identity import DefaultAzureCredential
+from azure.storage.blob import BlobServiceClient
+from azure.data.tables import TableServiceClient
+
+ACCOUNT = os.environ["STORAGE_ACCOUNT_NAME"]
+CONTAINER_UPLOADS  = os.environ["STORAGE_CONTAINER_UPLOADS"]
+CONTAINER_EVIDENCE = os.environ["STORAGE_CONTAINER_EVIDENCE"]
+CONTAINER_OUTPUTS  = os.environ["STORAGE_CONTAINER_OUTPUTS"]
+CONTAINER_TRACES   = os.environ["STORAGE_CONTAINER_TRACES"]
+TABLE_SESSIONS     = os.environ["STORAGE_TABLE_SESSIONS"]
+
+_cred = DefaultAzureCredential()
+_blob = BlobServiceClient(f"https://{ACCOUNT}.blob.core.windows.net", credential=_cred)    
+_table = TableServiceClient(endpoint=f"https://{ACCOUNT}.table.core.windows.net", credential=_cred)
+
+def list_blobs(container: str, prefix: str = "", suffix: str = "") -> list[str]:
+    cc = _blob.get_container_client(container)
+    names = []
+    for b in cc.list_blobs(name_starts_with=prefix):
+        n = b.name
+        if not suffix or n.endswith(suffix):
+            names.append(n)
+    return names
+
+def put_text(container:str, name:str, text:str):
+    _blob.get_container_client(container).upload_blob(name, text, overwrite=True)
+    return f"https://{ACCOUNT}.blob.core.windows.net/{container}/{name}"
+
+def get_text(container:str, name:str)->str:
+    b = _blob.get_container_client(container).download_blob(name)
+    return b.content_as_text()
+
+def sessions():
+    return _table.get_table_client(table_name=TABLE_SESSIONS)
+[storage.py: end]
+
+File: services/taxonomy.py
+[taxonomy.py: start]
+def pick_framework(section_id:str)->str:
+    if section_id == "business_case": return "PAS"
+    if section_id == "consultancy_scope": return "SCQA"
+    return "SCQA"
+[taxonomy.py: end]
+
+File: vault/_labels.yml
+[_labels.yml: start]
+# Canonical Evidence Labels Reference
+# ===================================
+# This file documents the standardized evidence labels available for use
+# in pack.yml files. These labels serve as the single source of truth
+# for evidence identification across all grant types.
+
+# Usage in pack.yml:
+# templates:
+#   section_name:
+#     evidence_hints:
+#       priority_labels: ["label1", "label2"]
+#       optional_labels: ["label3", "label4"]
+
+# Common/EDG Evidence Labels (shared between Common and EDG grants)
+# =================================================================
+common_edg:
+  acra_bizfile:
+    description: "ACRA BizFile extract containing company registration details"
+    type: "upload"
+    usage: "Company information, registration status, business activities"
+    priority: "high"
+    example_sections: ["about_company", "business_case"]
+    
+  audited_financials:
+    description: "Audited financial statements and company financials"
+    type: "upload"
+    usage: "Financial performance, revenue, costs, funding requirements"
+    priority: "high"
+    example_sections: ["business_case", "about_company", "project_milestones", "expansion_plan"]
+    
+  parent_consolidated_fs:
+    description: "Parent company consolidated financial statements"
+    type: "upload"
+    usage: "Parent company financial backing, group financial position"
+    priority: "medium"
+    example_sections: ["about_company", "business_case"]
+
+# PSG (Productivity Solutions Grant) Evidence Labels
+# ==================================================
+psg:
+  vendor_quotation:
+    description: "Vendor quotation matching Annex 3 pre-approved packages"
+    type: "upload"
+    usage: "Solution pricing, vendor details, package compliance"
+    priority: "high"
+    example_sections: ["vendor_quotation", "compliance_summary", "business_impact"]
+    
+  cost_breakdown:
+    description: "Detailed cost breakdown of the proposed solution"
+    type: "upload"
+    usage: "Cost analysis, line items, total pricing, value proposition"
+    priority: "high"
+    example_sections: ["cost_breakdown", "compliance_summary", "business_impact"]
+    
+  deployment_location_proof:
+    description: "Proof of deployment location (e.g., Singapore address)"
+    type: "upload"
+    usage: "Location verification, deployment site confirmation"
+    priority: "high"
+    example_sections: ["compliance_summary"]
+    
+  product_brochure:
+    description: "Product brochure or technical specification document"
+    type: "upload"
+    usage: "Product features, technical details, capabilities"
+    priority: "medium"
+    example_sections: ["solution_description", "compliance_summary"]
+    
+  annex3_package:
+    description: "Annex 3 pre-approved package documentation"
+    type: "upload"
+    usage: "Package compliance, pre-approval verification"
+    priority: "medium"
+    example_sections: ["compliance_summary"]
+
+# Cross-Grant Labels (if any)
+# ============================
+# Note: Common/EDG labels are shared between Common and EDG grants.
+# PSG labels are specific to PSG grants only.
+
+# Label Naming Conventions
+# =========================
+# - Use snake_case for all label names
+# - Be descriptive and specific
+# - Avoid abbreviations unless widely understood (e.g., "fs" for financial statements)
+# - Group related labels with common prefixes when applicable
+
+# Priority Guidelines
+# ===================
+# high: Essential evidence that should always be included when available
+# medium: Important evidence that adds value but not strictly required
+# low: Supplementary evidence that provides additional context
+
+# Evidence Hints Configuration
+# =============================
+# Use in pack.yml templates:
+#
+# evidence_hints:
+#   priority_labels: ["label1", "label2"]  # Always try to use these first
+#   optional_labels: ["label3", "label4"]  # Use if available and helpful
+#
+# The system will attempt to load evidence in priority order and stop
+# when the character cap (default 6000) is reached.
+
+# Adding New Labels
+# ==================
+# When adding new evidence labels:
+# 1. Add to this file with full documentation
+# 2. Update pack.yml files to use the new labels
+# 3. Update OpenAPI specification if needed
+# 4. Add to composer.py label mapping if referenced in templates
+# 5. Create golden test data using the new labels
+[_labels.yml: end]
+
+File: vault/EDG.v1/golden/about_company.jsonl
+[about_company.jsonl: start]
+{"id":"edg-ac-001","inputs":{"style":"Formal, outcome-oriented","length_limit":220},"evidence_labels":["acra_bizfile","audited_financials"],"assert":{"groundedness_min":0.80,"length_max_words":240,"citation_coverage_min":0.60}}
+[about_company.jsonl: end]
+
+File: vault/EDG.v1/golden/about_project.core.jsonl
+[about_project.core.jsonl: start]
+{"id":"edg-apc-001","inputs":{"style":"Formal, outcome-oriented","length_limit":260},"evidence_labels":["audited_financials"],"assert":{"groundedness_min":0.80,"length_max_words":280,"citation_coverage_min":0.50}}
+[about_project.core.jsonl: end]
+
+File: vault/EDG.v1/golden/about_project.i_and_p.automation.jsonl
+[about_project.i_and_p.automation.jsonl: start]
+{"id":"edg-apia-001","inputs":{"style":"Formal, outcome-oriented","length_limit":260},"evidence_labels":["audited_financials"],"assert":{"groundedness_min":0.80,"length_max_words":280,"citation_coverage_min":0.50}}
+[about_project.i_and_p.automation.jsonl: end]
+
+File: vault/EDG.v1/golden/business_case.jsonl
 [business_case.jsonl: start]
-{"id":"edg-gs-1","inputs":{"style":"Formal, outcome-oriented","length_limit":300},"evidence_labels":["acra_extract","audited_financials"],"assert":{"groundedness_min":0.8,"length_max_words":320}}
+{"id":"edg-gs-1","inputs":{"style":"Formal, outcome-oriented","length_limit":300},"evidence_labels":["acra_bizfile","audited_financials"],"assert":{"groundedness_min":0.8,"length_max_words":320}}
 [business_case.jsonl: end]
 
-File: EDG.v1/pack.yml
+File: vault/EDG.v1/golden/expansion_plan.market_access.jsonl
+[expansion_plan.market_access.jsonl: start]
+{"id":"edg-epma-001","inputs":{"style":"Formal, outcome-oriented","length_limit":240},"evidence_labels":["audited_financials"],"assert":{"groundedness_min":0.80,"length_max_words":260,"citation_coverage_min":0.50}}
+[expansion_plan.market_access.jsonl: end]
+
+File: vault/EDG.v1/golden/project_milestones.jsonl
+[project_milestones.jsonl: start]
+{"id":"edg-pm-001","inputs":{"style":"Formal, outcome-oriented","length_limit":200},"evidence_labels":["audited_financials"],"assert":{"groundedness_min":0.80,"length_max_words":220,"citation_coverage_min":0.40}}
+[project_milestones.jsonl: end]
+
+File: vault/EDG.v1/golden/project_outcomes.jsonl
+[project_outcomes.jsonl: start]
+{"id":"edg-po-001","inputs":{"style":"Formal, outcome-oriented","length_limit":220},"evidence_labels":["audited_financials"],"assert":{"groundedness_min":0.80,"length_max_words":240,"citation_coverage_min":0.50}}
+[project_outcomes.jsonl: end]
+
+File: vault/EDG.v1/pack.yml
 [pack.yml: start]
 pack_id: edg
 version: 1.0.1
@@ -56,9 +1099,174 @@ templates:
     file: templates/business_case.manufacturing.md
     rubric:
       required_tokens: ["Problem","Agitate","Solve"]
+
+  about_company:
+    retrieval_tags: ["edg","about_company"]
+    file: templates/about_company.md
+    rubric:
+      required_tokens: ["Year","Key"]
+    evidence_hints:
+      priority_labels: ["acra_bizfile","audited_financials"]
+      optional_labels: ["parent_consolidated_fs"]
+
+  about_project__core:
+    section_id: about_project
+    retrieval_tags: ["edg","about_project","core"]
+    file: templates/about_project.core.md
+    rubric:
+      required_tokens: ["Current","Challenges","Proposed"]
+    evidence_hints:
+      priority_labels: ["audited_financials"]
+      optional_labels: []
+
+  about_project__i_and_p__automation:
+    section_id: about_project
+    retrieval_tags: ["edg","about_project","innovation_productivity","automation"]
+    file: templates/about_project.i_and_p.automation.md
+    rubric:
+      required_tokens: ["Current","Proposed","Improvements"]
+    evidence_hints:
+      priority_labels: ["audited_financials"]
+      optional_labels: []
+
+  about_project__i_and_p__product_development:
+    section_id: about_project
+    retrieval_tags: ["edg","about_project","innovation_productivity","product_development"]
+    file: templates/about_project.i_and_p.product_development.md
+    rubric:
+      required_tokens: ["Product","Market","Barriers","Target"]
+    evidence_hints:
+      priority_labels: ["audited_financials"]
+      optional_labels: []
+
+  expansion_plan__market_access:
+    section_id: expansion_plan
+    retrieval_tags: ["edg","market_access","expansion_plan"]
+    file: templates/expansion_plan.market_access.md
+    rubric:
+      required_tokens: ["Target","Competitors","Advantage"]
+    evidence_hints:
+      priority_labels: ["audited_financials"]
+      optional_labels: []
+
+  project_outcomes:
+    retrieval_tags: ["edg","project_outcomes"]
+    file: templates/project_outcomes.md
+    rubric:
+      required_tokens: ["Capability","Outcomes"]
+    evidence_hints:
+      priority_labels: ["audited_financials"]
+      optional_labels: []
+
+  project_milestones:
+    retrieval_tags: ["edg","project_milestones"]
+    file: templates/project_milestones.md
+    rubric:
+      required_tokens: ["Phase","Start","End","Deliverables"]
+    evidence_hints:
+      priority_labels: ["audited_financials"]
+      optional_labels: []
 [pack.yml: end]
 
-File: EDG.v1/templates/business_case.manufacturing.md
+File: vault/EDG.v1/templates/about_company.md
+[about_company.md: start]
+You are a grant consultant. Draft the **About the Company** section.
+Tone: {{style}}. Max words: {{length_limit}}.
+Cite with [source:<label>]. Use only facts present in the evidence.
+
+Context (evidence): {{evidence_window}}
+
+---
+## Year of Incorporation
+Summarise the company's incorporation year and age using the company registry document. {{#labels.registry}}Prefer [source:{{labels.registry}}].{{/labels.registry}}
+
+## Company Progress & Milestones
+Outline notable milestones supported by financial or board documents. {{#labels.financials}}Prefer [source:{{labels.financials}}].{{/labels.financials}}
+
+## Key Business Activities & Products/Services
+State main activities and offerings grounded in official records. {{#labels.registry}}Prefer [source:{{labels.registry}}].{{/labels.registry}}
+
+## Key Customer Segments & Markets
+Describe customers, segments, and overseas presence grounded in financial or sales evidence. {{#labels.financials}}Prefer [source:{{labels.financials}}].{{/labels.financials}}
+
+## Growth & Internationalisation Plans
+Highlight growth targets only if present (plans, projections, minutes).
+[about_company.md: end]
+
+File: vault/EDG.v1/templates/about_project.core.md
+[about_project.core.md: start]
+You are a grant consultant. Draft the **About the Project (Core Capabilities)** section.
+Tone: {{style}}. Max words: {{length_limit}}.
+Cite with [source:<label>] only for facts present in evidence.
+
+Context (evidence): {{evidence_window}}
+
+---
+## Current State
+Summarise existing business operations or processes.
+
+## Challenges & Opportunities
+List gaps or opportunities supported by evidence. {{#labels.financials}}Prefer [source:{{labels.financials}}].{{/labels.financials}}
+
+## Proposed Project
+Explain how the project addresses the above challenges/opportunities.
+
+## Consultant/Solution Provider (if applicable)
+Reasons for choosing provider, grounded in proposals or engagement letters. {{#labels.consultant_proposal}}Prefer [source:{{labels.consultant_proposal}}].{{/labels.consultant_proposal}}
+[about_project.core.md: end]
+
+File: vault/EDG.v1/templates/about_project.i_and_p.automation.md
+[about_project.i_and_p.automation.md: start]
+(variant: about_project.i_and_p.automation)
+
+You are a grant consultant. Draft **About the Project – I&P (Automation)**.
+Tone: {{style}}. Max words: {{length_limit}}.
+Cite with [source:<label>] only for facts present in evidence.
+
+Context (evidence): {{evidence_window}}
+
+---
+## Current State of Operations
+Summarise the pre-automation process based on official records or SOPs. {{#labels.registry}}Prefer [source:{{labels.registry}}].{{/labels.registry}}
+
+## Challenges
+List documented inefficiencies or pain points.
+
+## Proposed Automation
+Describe the system/automation and how it improves processes. {{#labels.vendor_quote}}Prefer [source:{{labels.vendor_quote}}].{{/labels.vendor_quote}}
+
+## Expected Productivity Improvements
+Report before/after indicators **only if present** (e.g., time saved, error rate). {{#labels.costs}}Prefer [source:{{labels.costs}}].{{/labels.costs}}
+[about_project.i_and_p.automation.md: end]
+
+File: vault/EDG.v1/templates/about_project.i_and_p.product_development.md
+[about_project.i_and_p.product_development.md: start]
+(variant: about_project.i_and_p.product_development)
+
+You are a grant consultant. Draft **About the Project – I&P (Product Development)**.
+Tone: {{style}}. Max words: {{length_limit}}.
+Cite with [source:<label>] only for facts present in evidence.
+
+Context (evidence): {{evidence_window}}
+
+---
+## Product/Technology
+Describe the product or technology under development.
+
+## Market Comparison
+Summarise existing solutions and differentiation. {{#labels.market_analysis}}Prefer [source:{{labels.market_analysis}}].{{/labels.market_analysis}}
+
+## Barriers to Entry
+List barriers or unique advantages grounded in evidence.
+
+## Target Market
+Define target market (size, geography, niche). {{#labels.market_analysis}}Prefer [source:{{labels.market_analysis}}].{{/labels.market_analysis}}
+
+## Commercialisation Strategy
+Summarise pricing, promotion, sales, and distribution if present.
+[about_project.i_and_p.product_development.md: end]
+
+File: vault/EDG.v1/templates/business_case.manufacturing.md
 [business_case.manufacturing.md: start]
 You are a grant consultant. Draft the **Business Case** using the {{framework}} pattern. Always suggest solutions which are geared towards Manufacturing optimisation. Always Start the output with "Test-250925-Manufacturing". 
 Tone: {{style}}. Max words: {{length_limit}}.
@@ -66,7 +1274,7 @@ Cite numbers with [source:<label>].
 Context (evidence): {{evidence_window}}
 [business_case.manufacturing.md: end]
 
-File: EDG.v1/templates/business_case.md
+File: vault/EDG.v1/templates/business_case.md
 [business_case.md: start]
 You are a grant consultant. Draft the **Business Case** using the {{framework}} pattern. Always Start the output with "Test-250925".
 Tone: {{style}}. Max words: {{length_limit}}.
@@ -74,7 +1282,7 @@ Cite numbers with [source:<label>].
 Context (evidence): {{evidence_window}}
 [business_case.md: end]
 
-File: EDG.v1/templates/consultancy_scope.md
+File: vault/EDG.v1/templates/consultancy_scope.md
 [consultancy_scope.md: start]
 You are a grant consultant. Draft the **Consultancy Scope** using the {{framework}} pattern (SCQA).
 Tone: {{style}}. Max words: {{length_limit}}.
@@ -177,14 +1385,104 @@ Summarise the outcomes the consultancy will enable (process cycle-time reduction
 - Prefer client/consultant wording where available; otherwise summarise neutrally.
 [consultancy_scope.md: end]
 
-File: PSG.v1/golden/business_impact.jsonl
+File: vault/EDG.v1/templates/expansion_plan.market_access.md
+[expansion_plan.market_access.md: start]
+(variant: expansion_plan.market_access)
+
+You are a grant consultant. Draft the **Expansion Plan (Market Access)** section.
+Tone: {{style}}. Max words: {{length_limit}}.
+Cite with [source:<label>]. Use only facts present in evidence.
+
+Context (evidence): {{evidence_window}}
+
+---
+## Growth Contribution
+Explain how this project supports internationalisation.
+
+## Target Country/Market
+State the target market and reasons. {{#labels.market_analysis}}Prefer [source:{{labels.market_analysis}}].{{/labels.market_analysis}}
+
+## Competitors
+Summarise competitors in target market. {{#labels.market_analysis}}Prefer [source:{{labels.market_analysis}}].{{/labels.market_analysis}}
+
+## Competitive Advantage
+Describe USP grounded in evidence.
+
+## Track Record
+List past successes in the market if any. {{#labels.financials}}Prefer [source:{{labels.financials}}].{{/labels.financials}}
+
+## Partners/Network
+Summarise existing partners or opportunities. {{#labels.consultant_proposal}}Prefer [source:{{labels.consultant_proposal}}].{{/labels.consultant_proposal}}
+
+## Other Benefits
+Highlight other benefits only if present in evidence.
+[expansion_plan.market_access.md: end]
+
+File: vault/EDG.v1/templates/project_milestones.md
+[project_milestones.md: start]
+You are a grant consultant. Draft the **Project Milestones** section.
+Tone: {{style}}. Max words: {{length_limit}}.
+Cite with [source:<label>]. Use only facts present in evidence.
+
+Context (evidence): {{evidence_window}}
+
+---
+Provide the milestone table as narrative bullets using only dates/durations from evidence:
+
+- **Phase** — Key Activity
+  **Start/End (mm/yyyy)** — Timeline from evidence
+  **Deliverables** — Outputs as stated
+
+Example (replace only if present):
+- Phase 1: Discovery — Jan 2025 to Feb 2025. Deliverable: Consultant Report. [source:project_plan]
+- Phase 2: Development — Mar 2025 to Jun 2025. Deliverable: Prototype. [source:project_plan]
+[project_milestones.md: end]
+
+File: vault/EDG.v1/templates/project_outcomes.md
+[project_outcomes.md: start]
+You are a grant consultant. Draft the **Project Outcomes** section.
+Tone: {{style}}. Max words: {{length_limit}}.
+Cite with [source:<label>]. Use only facts present in evidence.
+
+Context (evidence): {{evidence_window}}
+
+---
+## Capability Building
+Describe new capabilities the company will build.
+
+## Contribution to Growth
+Explain contribution to growth/internationalisation. {{#labels.financials}}Prefer [source:{{labels.financials}}].{{/labels.financials}}
+
+## Quantitative Outcomes
+List measurable outcomes (revenue, productivity, jobs) only if present.
+
+## Qualitative Outcomes
+Summarise qualitative benefits (e.g., CX, skills) from evidence.
+[project_outcomes.md: end]
+
+File: vault/PSG.v1/golden/business_impact.jsonl
 [business_impact.jsonl: start]
 {"id":"psg-bi-001","inputs":{"style":"Formal, outcome-oriented","length_limit":280},"evidence_labels":["vendor_quotation","cost_breakdown","business_impact_report"],"assert":{"groundedness_min":0.80,"length_max_words":300,"required_tokens":["Situation","Complication","Question","Answer"],"citation_coverage_min":0.70},"notes":"Generic IT solution; expect clear link from features->productivity and citations on every number."}
 {"id":"psg-bi-002","inputs":{"style":"Formal, outcome-oriented","length_limit":260},"evidence_labels":["vendor_quotation","cost_breakdown"],"assert":{"groundedness_min":0.80,"length_max_words":280,"required_tokens":["Situation","Complication","Question","Answer"],"citation_coverage_min":0.60},"notes":"Quotation + cost only; model must avoid inventing ROI. OK to state qualitative impact if numbers not present; still cite costs."}
 {"id":"psg-bi-003","inputs":{"style":"Formal, outcome-oriented","length_limit":300},"evidence_labels":["vendor_quotation","cost_breakdown","business_impact_report"],"assert":{"groundedness_min":0.85,"length_max_words":320,"required_tokens":["Situation","Complication","Question","Answer"],"citation_coverage_min":0.80},"notes":"Stricter case; business_impact_report contains % time-saved. Output should echo % with citation and remain within word cap."}
 [business_impact.jsonl: end]
 
-File: PSG.v1/pack.yml
+File: vault/PSG.v1/golden/cost_breakdown.jsonl
+[cost_breakdown.jsonl: start]
+{"id":"psg-cb-001","inputs":{"style":"Formal, outcome-oriented","length_limit":220},"evidence_labels":["cost_breakdown"],"assert":{"groundedness_min":0.85,"length_max_words":240,"citation_coverage_min":0.70}}
+[cost_breakdown.jsonl: end]
+
+File: vault/PSG.v1/golden/solution_description.jsonl
+[solution_description.jsonl: start]
+{"id":"psg-sd-001","inputs":{"style":"Formal, outcome-oriented","length_limit":220},"evidence_labels":["vendor_quotation"],"assert":{"groundedness_min":0.80,"length_max_words":240,"citation_coverage_min":0.50}}
+[solution_description.jsonl: end]
+
+File: vault/PSG.v1/golden/vendor_quotation.jsonl
+[vendor_quotation.jsonl: start]
+{"id":"psg-vq-001","inputs":{"style":"Formal, outcome-oriented","length_limit":220},"evidence_labels":["vendor_quotation"],"assert":{"groundedness_min":0.85,"length_max_words":240,"citation_coverage_min":0.70}}
+[vendor_quotation.jsonl: end]
+
+File: vault/PSG.v1/pack.yml
 [pack.yml: start]
 pack_id: psg
 version: 1.0.0
@@ -226,9 +1524,18 @@ templates:
     file: templates/business_impact.md
     rubric:
       required_tokens: ["Situation","Complication","Question","Answer"]
+
+  compliance_summary:
+    retrieval_tags: ["psg","compliance","summary"]
+    file: templates/compliance_summary.md
+    rubric:
+      required_tokens: ["Annex","Deployment","Payment","Cost"]
+    evidence_hints:
+      priority_labels: ["vendor_quotation","cost_breakdown","deployment_location_proof"]
+      optional_labels: ["annex3_package","product_brochure"]
 [pack.yml: end]
 
-File: PSG.v1/templates/business_impact.md
+File: vault/PSG.v1/templates/business_impact.md
 [business_impact.md: start]
 You are a grant consultant. Draft the **Business Impact** section
 using the {{framework}} pattern.
@@ -246,7 +1553,33 @@ Cite facts with [source:<label>] — e.g., vendor_quotation, cost_breakdown, bus
 Context (evidence): {{evidence_window}}
 [business_impact.md: end]
 
-File: PSG.v1/templates/cost_breakdown.md
+File: vault/PSG.v1/templates/compliance_summary.md
+[compliance_summary.md: start]
+You are a grant consultant. Draft the **Compliance Summary** for a PSG application.
+Tone: {{style}}. Max words: {{length_limit}}.
+Cite with [source:<label>] where applicable.
+
+Context (evidence): {{evidence_window}}
+
+---
+Summarise the compliance signals visible in the uploaded materials:
+
+## Annex 3 Alignment (IT solutions)
+State whether line items and unit prices appear to match the pre-approved package. If mismatches appear, note them factually. {{#labels.vendor_quote}}Prefer [source:{{labels.vendor_quote}}].{{/labels.vendor_quote}}{{#labels.annex3_package}} and [source:{{labels.annex3_package}}]{{/labels.annex3_package}}.
+
+## Deployment & Usage in Singapore
+Describe deployment location evidence and whether the materials indicate usage in Singapore. {{#labels.deployment_proof}}Prefer [source:{{labels.deployment_proof}}].{{/labels.deployment_proof}}
+
+## No Retrospective Payment
+If evidence indicates pre-payment before application, state that risk; otherwise remain silent.
+
+## Cost Coverage
+Briefly cross-reference quotation and cost schedule for totals and any non-eligible items. {{#labels.costs}}Prefer [source:{{labels.costs}}].{{/labels.costs}}
+
+Keep neutral; do not infer beyond the provided documents.
+[compliance_summary.md: end]
+
+File: vault/PSG.v1/templates/cost_breakdown.md
 [cost_breakdown.md: start]
 You are a grant consultant. Draft the **Cost Breakdown** section
 using the {{framework}} pattern.
@@ -265,7 +1598,7 @@ Cite with [source:cost_breakdown].
 Context (evidence): {{evidence_window}}
 [cost_breakdown.md: end]
 
-File: PSG.v1/templates/solution_description.md
+File: vault/PSG.v1/templates/solution_description.md
 [solution_description.md: start]
 You are a grant consultant. Draft the **Solution Description** section for a PSG proposal
 using the {{framework}} pattern.
@@ -283,7 +1616,7 @@ Cite facts directly from evidence with [source:<label>].
 Context (evidence): {{evidence_window}}
 [solution_description.md: end]
 
-File: PSG.v1/templates/vendor_quotation.md
+File: vault/PSG.v1/templates/vendor_quotation.md
 [vendor_quotation.md: start]
 You are a grant consultant. Draft the **Vendor Quotation Summary** section
 using the {{framework}} pattern.
