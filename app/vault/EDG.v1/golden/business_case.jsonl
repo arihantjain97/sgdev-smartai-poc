@@ -1,1 +1,1 @@
-{"id":"edg-gs-1","inputs":{"style":"Formal, outcome-oriented","length_limit":300},"evidence_labels":["acra_extract","audited_financials"],"assert":{"groundedness_min":0.8,"length_max_words":320}}
+{"id":"edg-gs-1","inputs":{"style":"Formal, outcome-oriented","length_limit":300},"evidence_labels":["acra_bizfile","audited_financials"],"assert":{"groundedness_min":0.8,"length_max_words":320}}

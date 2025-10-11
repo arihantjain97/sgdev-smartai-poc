@@ -11,8 +11,8 @@ _INDEX           = os.environ.get("AZURE_SEARCH_INDEX","smartai-prompts")
 
 _client = SearchClient(_SEARCH_ENDPOINT, _INDEX, AzureKeyCredential(_SEARCH_KEY))
 
-_cache: Dict[Tuple[str,str,str], Tuple[dict,float]] = {}
-# key=(pack,ver,section) -> (doc, expires)
+_cache: Dict[Tuple[str,str,str,str], Tuple[dict,float]] = {}
+# key=(pack,ver,section,variant) -> (doc, expires)
 
 def _active_pack() -> Tuple[str,str]:
     v = cfg_get("PROMPT_PACK_ACTIVE", "edg@latest-approved")
@@ -20,19 +20,19 @@ def _active_pack() -> Tuple[str,str]:
     p, ver = v.split("@",1)
     return p, ver
 
-def _cache_get(pack, ver, section) -> Optional[dict]:
-    key = (pack, ver, section)
+def _cache_get(pack, ver, section, variant) -> Optional[dict]:
+    key = (pack, ver, section, variant or "")
     item = _cache.get(key)
     if item and item[1] > time.time():
         return item[0]
     return None
 
-def _cache_set(pack, ver, section, doc, ttl=30):
-    _cache[(pack,ver,section)] = (doc, time.time()+ttl)
+def _cache_set(pack, ver, section, variant, doc, ttl=30):
+    _cache[(pack,ver,section,variant or "")] = (doc, time.time()+ttl)
 
-def retrieve_template(section_id: str, tags: Optional[List[str]] = None) -> dict:
+def retrieve_template(section_id: str, tags: Optional[List[str]] = None, section_variant: Optional[str] = None, pack_hint: Optional[str] = None) -> dict:
     pack, ver = _active_pack()
-    cached = _cache_get(pack, ver, section_id)
+    cached = _cache_get(pack, ver, section_id, section_variant)
     if cached:
         return cached
 
@@ -93,5 +93,5 @@ def retrieve_template(section_id: str, tags: Optional[List[str]] = None) -> dict
     if not hit:
         raise LookupError(f"No template found for {pack}@{ver}:{section_id}")
 
-    _cache_set(pack, ver, section_id, hit)
+    _cache_set(pack, ver, section_id, section_variant, hit)
     return hit

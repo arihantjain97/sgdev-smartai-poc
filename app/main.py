@@ -54,15 +54,39 @@ async def create_session(body: SessionCreate):
 
 @app.get("/v1/session/{sid}/checklist")
 async def checklist(sid: str):
-    # Toy: two drafts + three uploads
-    tasks = [
-      {"id":"acra_extract", "type":"upload"},
-      {"id":"audited_financials","type":"upload"},
-      {"id":"vendor_quotation","type":"upload"},
-      {"id":"consultancy_scope","type":"draft", "section_variant": None},
-      {"id":"business_case","type":"draft", "section_variant": None}
-    ]
-    return {"session_id":sid,"tasks":tasks}
+    # Read the session to know which grant this session is for
+    try:
+        sess = storage.sessions().get_entity(partition_key="session", row_key=sid)
+        grant = (sess.get("grant") or "EDG").upper()
+    except Exception:
+        # If session not found or table hiccups, fall back safely
+        grant = "EDG"
+
+    if grant == "PSG":
+        # PSG: uploads + drafts (no variant needed)
+        tasks = [
+            {"id": "vendor_quotation", "type": "upload"},
+            {"id": "cost_breakdown", "type": "upload"},
+            {"id": "business_impact", "type": "draft", "section_variant": None},
+            {"id": "solution_description", "type": "draft", "section_variant": None},
+            # (optional) compliance summary draft for your reviewers/UI
+            {"id": "compliance_summary", "type": "draft", "section_variant": None},
+        ]
+    else:
+        # EDG: uploads + drafts (WITH a variant example)
+        tasks = [
+            {"id": "acra_bizfile", "type": "upload"},
+            {"id": "audited_financials", "type": "upload"},
+            {"id": "consultancy_scope", "type": "draft", "section_variant": None},
+            # Example: drive the "About the Project – I&P (Automation)" variant
+            {"id": "about_project", "type": "draft",
+             "section_variant": "about_project.i_and_p.automation"},
+            # (optional) include a Market Access draft variant
+            {"id": "expansion_plan", "type": "draft",
+             "section_variant": "expansion_plan.market_access"},
+        ]
+
+    return {"session_id": sid, "grant": grant, "tasks": tasks}
 
 class DraftReq(BaseModel):
     session_id: str
@@ -80,8 +104,8 @@ async def draft(req: DraftReq, response: Response):
     # 2) Else if caller provides legacy inputs.evidence_label (single), use it.
     # 3) Else use sensible defaults per section.
     DEFAULT_EVIDENCE_BY_SECTION = {
-        "business_case": ["acra_extract", "audited_financials"],
-        "consultancy_scope": ["acra_extract"]
+        "business_case": ["acra_bizfile", "audited_financials"],
+        "consultancy_scope": ["acra_bizfile"]
     }
     labels = None
     try:
@@ -127,7 +151,13 @@ async def draft(req: DraftReq, response: Response):
         req.inputs["evidence_label"] = ",".join(evidence_used)  # back-compat for any single-label template
 
     try:
-        msgs, packver = composer.compose_instruction(req.section_id, fw, req.inputs or {}, snippet)
+        msgs, packver, evidence_order_used = composer.compose_instruction(
+            req.section_id, 
+            fw, 
+            req.inputs or {}, 
+            snippet,
+            section_variant=req.section_variant
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Prompt Vault error: {type(e).__name__}: {e}")
     response.headers["x-prompt-pack"] = packver
@@ -142,7 +172,7 @@ async def draft(req: DraftReq, response: Response):
     return {
         "section_id": req.section_id,
         "framework": fw,
-        "evidence_used": evidence_used,
+        "evidence_used": evidence_order_used,  # Use the ordered labels from composer
         "output": out,
         "evaluation": ev
     }
