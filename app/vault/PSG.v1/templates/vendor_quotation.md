@@ -13,3 +13,4 @@ Instructions:
 All numbers must be grounded in the quotation evidence.
 Cite numbers with [source:vendor_quotation].
 Context (evidence): {{evidence_window}}
+User context: {{user_prompt}}

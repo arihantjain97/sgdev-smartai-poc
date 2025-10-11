@@ -2,7 +2,8 @@ Directory Structure:
 ==================================================
 └── app/
     ├── __pycache__/
-    │   └── __init__.cpython-310.pyc
+    │   ├── __init__.cpython-310.pyc
+    │   └── main.cpython-310.pyc
     ├── manifests/
     │   └── edg.yml
     ├── scripts/
@@ -12,7 +13,8 @@ Directory Structure:
     │   │   ├── __init__.cpython-310.pyc
     │   │   ├── appcfg.cpython-310.pyc
     │   │   ├── composer.cpython-310.pyc
-    │   │   └── prompt_vault.cpython-310.pyc
+    │   │   ├── prompt_vault.cpython-310.pyc
+    │   │   └── storage.cpython-310.pyc
     │   ├── .DS_Store
     │   ├── __init__.py
     │   ├── aoai.py
@@ -77,10 +79,16 @@ File: __pycache__/__init__.cpython-310.pyc
 [Binary file - 155 bytes]
 [__init__.cpython-310.pyc: end]
 
+File: __pycache__/main.cpython-310.pyc
+[main.cpython-310.pyc: start]
+[Binary file - 8920 bytes]
+[main.cpython-310.pyc: end]
+
 File: main.py
 [main.py: start]
+from typing import Any
 from fastapi import FastAPI, UploadFile, Form, Query, HTTPException, Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from app.services import storage, taxonomy, composer, evaluator
 from app.services.aoai import chat_completion
 from fastapi.middleware.cors import CORSMiddleware
@@ -125,6 +133,29 @@ class SessionCreate(BaseModel):
     grant: str = "EDG"
     company_name: str | None = None
 
+# ------------------------------------------------------------
+# Generic Fact Schema (base for all session metadata)
+# ------------------------------------------------------------
+class SessionFactsReq(BaseModel):
+    """
+    Generic session fact capture for eligibility, profiling, diagnostics.
+    Works across grants, lead-gen, vendor profiling, and other use cases.
+    """
+    # Common across SME-type use cases
+    local_equity_pct: float | None = Field(None, ge=0, le=100, description="Local equity percentage")
+    turnover: float | None = Field(None, ge=0, description="Annual turnover/revenue")
+    headcount: int | None = Field(None, ge=0, description="Number of employees")
+
+    # Grant-specific attestations (optional)
+    used_in_singapore: bool | None = Field(None, description="Will the grant outcome be used in Singapore?")
+    no_payment_before_application: bool | None = Field(None, description="No payment made before application?")
+
+    # Open extension for other verticals (lead-gen, diagnostics, etc.)
+    extra: dict[str, Any] | None = Field(
+        None,
+        description="Free-form key-value facts, e.g. {'industry':'F&B','budget_range':'<50k'}"
+    )
+
 @app.post("/v1/session")
 async def create_session(body: SessionCreate):
     table = storage.sessions()
@@ -132,6 +163,65 @@ async def create_session(body: SessionCreate):
     entity = {"PartitionKey":"session","RowKey":sid,"grant":body.grant,"status":"new"}
     table.upsert_entity(entity)
     return {"session_id": sid}
+
+# ------------------------------------------------------------
+# Session Getter (debug / general retrieval)
+# ------------------------------------------------------------
+@app.get("/v1/session/{sid}")
+async def get_session(sid: str):
+    """
+    Retrieve session metadata including all facts.
+    """
+    try:
+        sess = storage.sessions().get_entity(partition_key="session", row_key=sid)
+    except Exception:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return {"session_id": sid, "session": dict(sess)}
+
+# ------------------------------------------------------------
+# Unified Fact Upsert Endpoint
+# ------------------------------------------------------------
+@app.post("/v1/session/{sid}/facts")
+@app.post("/v1/session/{sid}/eligibility")  # backward-compatible alias
+async def upsert_session_facts(sid: str, body: SessionFactsReq):
+    """
+    Upsert structured facts for a session (eligibility, profiling, diagnostics).
+    
+    This endpoint works as both:
+    - /facts: Generic key-value fact capture for any use case
+    - /eligibility: Backward-compatible alias for grant eligibility data
+    
+    Supports:
+    - EDG/PSG grant eligibility (local_equity_pct, turnover, headcount)
+    - Grant attestations (used_in_singapore, no_payment_before_application)
+    - Free-form facts via 'extra' dict for lead-gen, diagnostics, vendor profiling
+    """
+    try:
+        sess = storage.sessions().get_entity(partition_key="session", row_key=sid)
+    except Exception:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    # Convert model to dict, excluding unset fields
+    payload = body.model_dump(exclude_unset=True)
+
+    # Flatten extra dict if present
+    extras = payload.pop("extra", {}) or {}
+    
+    # Merge structured fields into session
+    for k, v in payload.items():
+        sess[k] = v
+    
+    # Merge dynamic facts at same level
+    for k, v in extras.items():
+        sess[k] = v
+
+    storage.sessions().upsert_entity(sess)
+    
+    # Return combined facts for verification
+    all_facts = payload.copy()
+    all_facts.update(extras)
+    
+    return {"session_id": sid, "facts": all_facts}
 
 @app.get("/v1/session/{sid}/checklist")
 async def checklist(sid: str):
@@ -439,13 +529,18 @@ File: services/__pycache__/appcfg.cpython-310.pyc
 
 File: services/__pycache__/composer.cpython-310.pyc
 [composer.cpython-310.pyc: start]
-[Binary file - 4636 bytes]
+[Binary file - 4961 bytes]
 [composer.cpython-310.pyc: end]
 
 File: services/__pycache__/prompt_vault.cpython-310.pyc
 [prompt_vault.cpython-310.pyc: start]
-[Binary file - 2586 bytes]
+[Binary file - 2628 bytes]
 [prompt_vault.cpython-310.pyc: end]
+
+File: services/__pycache__/storage.cpython-310.pyc
+[storage.cpython-310.pyc: start]
+[Binary file - 1819 bytes]
+[storage.cpython-310.pyc: end]
 
 File: services/aoai.py
 [aoai.py: start]
@@ -659,6 +754,7 @@ def compose_instruction(
     style = inputs.get("style", "Formal, consultant voice")
     length = int(inputs.get("length_limit", 350))
     grant = (inputs.get("grant") or inputs.get("grant_id") or "edg").lower()
+    user_prompt = (inputs.get("prompt") or "").strip()
 
     # tags help retrieval choose variant-specific prompts too
     tags = [section_id, framework.lower(), grant] + list(inputs.get("tags", []))
@@ -712,11 +808,21 @@ def compose_instruction(
         "framework": framework,
         "style": style,
         "length_limit": str(length),
-        "evidence_window": evidence_window
+        "evidence_window": evidence_window,
+        "user_prompt": user_prompt
     })
 
     # Render optional label blocks + substitute {{labels.*}}
     prompt_text = _render_label_blocks(prompt_text, labels_map)
+
+    # Prepend the operator's free-text prompt so the model MUST address it
+    if user_prompt:
+        prompt_text = (
+            "Operator prompt (must be addressed explicitly): "
+            + user_prompt
+            + "\n\n"
+            + prompt_text
+        )
 
     # Final messages; keep system brief and generic to avoid over-constraining the template
     messages = [
@@ -760,8 +866,8 @@ _INDEX           = os.environ.get("AZURE_SEARCH_INDEX","smartai-prompts")
 
 _client = SearchClient(_SEARCH_ENDPOINT, _INDEX, AzureKeyCredential(_SEARCH_KEY))
 
-_cache: Dict[Tuple[str,str,str], Tuple[dict,float]] = {}
-# key=(pack,ver,section) -> (doc, expires)
+_cache: Dict[Tuple[str,str,str,str], Tuple[dict,float]] = {}
+# key=(pack,ver,section,variant) -> (doc, expires)
 
 def _active_pack() -> Tuple[str,str]:
     v = cfg_get("PROMPT_PACK_ACTIVE", "edg@latest-approved")
@@ -769,19 +875,19 @@ def _active_pack() -> Tuple[str,str]:
     p, ver = v.split("@",1)
     return p, ver
 
-def _cache_get(pack, ver, section) -> Optional[dict]:
-    key = (pack, ver, section)
+def _cache_get(pack, ver, section, variant) -> Optional[dict]:
+    key = (pack, ver, section, variant or "")
     item = _cache.get(key)
     if item and item[1] > time.time():
         return item[0]
     return None
 
-def _cache_set(pack, ver, section, doc, ttl=30):
-    _cache[(pack,ver,section)] = (doc, time.time()+ttl)
+def _cache_set(pack, ver, section, variant, doc, ttl=30):
+    _cache[(pack,ver,section,variant or "")] = (doc, time.time()+ttl)
 
 def retrieve_template(section_id: str, tags: Optional[List[str]] = None, section_variant: Optional[str] = None, pack_hint: Optional[str] = None) -> dict:
     pack, ver = _active_pack()
-    cached = _cache_get(pack, ver, section_id)
+    cached = _cache_get(pack, ver, section_id, section_variant)
     if cached:
         return cached
 
@@ -842,7 +948,7 @@ def retrieve_template(section_id: str, tags: Optional[List[str]] = None, section
     if not hit:
         raise LookupError(f"No template found for {pack}@{ver}:{section_id}")
 
-    _cache_set(pack, ver, section_id, hit)
+    _cache_set(pack, ver, section_id, section_variant, hit)
     return hit
 [prompt_vault.py: end]
 
@@ -1175,6 +1281,7 @@ Tone: {{style}}. Max words: {{length_limit}}.
 Cite with [source:<label>]. Use only facts present in the evidence.
 
 Context (evidence): {{evidence_window}}
+User context: {{user_prompt}}
 
 ---
 ## Year of Incorporation
@@ -1200,6 +1307,7 @@ Tone: {{style}}. Max words: {{length_limit}}.
 Cite with [source:<label>] only for facts present in evidence.
 
 Context (evidence): {{evidence_window}}
+User context: {{user_prompt}}
 
 ---
 ## Current State
@@ -1224,6 +1332,7 @@ Tone: {{style}}. Max words: {{length_limit}}.
 Cite with [source:<label>] only for facts present in evidence.
 
 Context (evidence): {{evidence_window}}
+User context: {{user_prompt}}
 
 ---
 ## Current State of Operations
@@ -1248,6 +1357,7 @@ Tone: {{style}}. Max words: {{length_limit}}.
 Cite with [source:<label>] only for facts present in evidence.
 
 Context (evidence): {{evidence_window}}
+User context: {{user_prompt}}
 
 ---
 ## Product/Technology
@@ -1272,6 +1382,7 @@ You are a grant consultant. Draft the **Business Case** using the {{framework}} 
 Tone: {{style}}. Max words: {{length_limit}}.
 Cite numbers with [source:<label>].
 Context (evidence): {{evidence_window}}
+User context: {{user_prompt}}
 [business_case.manufacturing.md: end]
 
 File: vault/EDG.v1/templates/business_case.md
@@ -1280,6 +1391,7 @@ You are a grant consultant. Draft the **Business Case** using the {{framework}} 
 Tone: {{style}}. Max words: {{length_limit}}.
 Cite numbers with [source:<label>].
 Context (evidence): {{evidence_window}}
+User context: {{user_prompt}}
 [business_case.md: end]
 
 File: vault/EDG.v1/templates/consultancy_scope.md
@@ -1291,6 +1403,7 @@ Only use facts found in the evidence window. Do not invent items that are not in
 
 Context (evidence window, truncated): 
 {{evidence_window}}
+User context: {{user_prompt}}
 
 ---
 ## Situation
@@ -1394,6 +1507,7 @@ Tone: {{style}}. Max words: {{length_limit}}.
 Cite with [source:<label>]. Use only facts present in evidence.
 
 Context (evidence): {{evidence_window}}
+User context: {{user_prompt}}
 
 ---
 ## Growth Contribution
@@ -1425,6 +1539,7 @@ Tone: {{style}}. Max words: {{length_limit}}.
 Cite with [source:<label>]. Use only facts present in evidence.
 
 Context (evidence): {{evidence_window}}
+User context: {{user_prompt}}
 
 ---
 Provide the milestone table as narrative bullets using only dates/durations from evidence:
@@ -1445,6 +1560,7 @@ Tone: {{style}}. Max words: {{length_limit}}.
 Cite with [source:<label>]. Use only facts present in evidence.
 
 Context (evidence): {{evidence_window}}
+User context: {{user_prompt}}
 
 ---
 ## Capability Building
@@ -1551,6 +1667,7 @@ Instructions:
 
 Cite facts with [source:<label>] — e.g., vendor_quotation, cost_breakdown, business_impact_report.
 Context (evidence): {{evidence_window}}
+User context: {{user_prompt}}
 [business_impact.md: end]
 
 File: vault/PSG.v1/templates/compliance_summary.md
@@ -1560,6 +1677,7 @@ Tone: {{style}}. Max words: {{length_limit}}.
 Cite with [source:<label>] where applicable.
 
 Context (evidence): {{evidence_window}}
+User context: {{user_prompt}}
 
 ---
 Summarise the compliance signals visible in the uploaded materials:
@@ -1596,6 +1714,7 @@ Instructions:
 All costs must come from the uploaded evidence.
 Cite with [source:cost_breakdown].
 Context (evidence): {{evidence_window}}
+User context: {{user_prompt}}
 [cost_breakdown.md: end]
 
 File: vault/PSG.v1/templates/solution_description.md
@@ -1614,6 +1733,7 @@ Instructions:
 
 Cite facts directly from evidence with [source:<label>].
 Context (evidence): {{evidence_window}}
+User context: {{user_prompt}}
 [solution_description.md: end]
 
 File: vault/PSG.v1/templates/vendor_quotation.md
@@ -1633,5 +1753,6 @@ Instructions:
 All numbers must be grounded in the quotation evidence.
 Cite numbers with [source:vendor_quotation].
 Context (evidence): {{evidence_window}}
+User context: {{user_prompt}}
 [vendor_quotation.md: end]
 
