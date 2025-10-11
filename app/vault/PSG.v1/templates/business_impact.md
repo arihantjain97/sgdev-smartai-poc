@@ -12,3 +12,4 @@ Instructions:
 
 Cite facts with [source:<label>] — e.g., vendor_quotation, cost_breakdown, business_impact_report.
 Context (evidence): {{evidence_window}}
+User context: {{user_prompt}}

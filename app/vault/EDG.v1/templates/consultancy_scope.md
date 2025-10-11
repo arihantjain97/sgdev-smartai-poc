@@ -5,6 +5,7 @@ Only use facts found in the evidence window. Do not invent items that are not in
 
 Context (evidence window, truncated): 
 {{evidence_window}}
+User context: {{user_prompt}}
 
 ---
 ## Situation

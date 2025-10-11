@@ -5,6 +5,7 @@ Tone: {{style}}. Max words: {{length_limit}}.
 Cite with [source:<label>] only for facts present in evidence.
 
 Context (evidence): {{evidence_window}}
+User context: {{user_prompt}}
 
 ---
 ## Product/Technology

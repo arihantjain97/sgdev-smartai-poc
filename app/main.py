@@ -1,5 +1,6 @@
+from typing import Any
 from fastapi import FastAPI, UploadFile, Form, Query, HTTPException, Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from app.services import storage, taxonomy, composer, evaluator
 from app.services.aoai import chat_completion
 from fastapi.middleware.cors import CORSMiddleware
@@ -44,6 +45,29 @@ class SessionCreate(BaseModel):
     grant: str = "EDG"
     company_name: str | None = None
 
+# ------------------------------------------------------------
+# Generic Fact Schema (base for all session metadata)
+# ------------------------------------------------------------
+class SessionFactsReq(BaseModel):
+    """
+    Generic session fact capture for eligibility, profiling, diagnostics.
+    Works across grants, lead-gen, vendor profiling, and other use cases.
+    """
+    # Common across SME-type use cases
+    local_equity_pct: float | None = Field(None, ge=0, le=100, description="Local equity percentage")
+    turnover: float | None = Field(None, ge=0, description="Annual turnover/revenue")
+    headcount: int | None = Field(None, ge=0, description="Number of employees")
+
+    # Grant-specific attestations (optional)
+    used_in_singapore: bool | None = Field(None, description="Will the grant outcome be used in Singapore?")
+    no_payment_before_application: bool | None = Field(None, description="No payment made before application?")
+
+    # Open extension for other verticals (lead-gen, diagnostics, etc.)
+    extra: dict[str, Any] | None = Field(
+        None,
+        description="Free-form key-value facts, e.g. {'industry':'F&B','budget_range':'<50k'}"
+    )
+
 @app.post("/v1/session")
 async def create_session(body: SessionCreate):
     table = storage.sessions()
@@ -51,6 +75,65 @@ async def create_session(body: SessionCreate):
     entity = {"PartitionKey":"session","RowKey":sid,"grant":body.grant,"status":"new"}
     table.upsert_entity(entity)
     return {"session_id": sid}
+
+# ------------------------------------------------------------
+# Session Getter (debug / general retrieval)
+# ------------------------------------------------------------
+@app.get("/v1/session/{sid}")
+async def get_session(sid: str):
+    """
+    Retrieve session metadata including all facts.
+    """
+    try:
+        sess = storage.sessions().get_entity(partition_key="session", row_key=sid)
+    except Exception:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return {"session_id": sid, "session": dict(sess)}
+
+# ------------------------------------------------------------
+# Unified Fact Upsert Endpoint
+# ------------------------------------------------------------
+@app.post("/v1/session/{sid}/facts")
+@app.post("/v1/session/{sid}/eligibility")  # backward-compatible alias
+async def upsert_session_facts(sid: str, body: SessionFactsReq):
+    """
+    Upsert structured facts for a session (eligibility, profiling, diagnostics).
+    
+    This endpoint works as both:
+    - /facts: Generic key-value fact capture for any use case
+    - /eligibility: Backward-compatible alias for grant eligibility data
+    
+    Supports:
+    - EDG/PSG grant eligibility (local_equity_pct, turnover, headcount)
+    - Grant attestations (used_in_singapore, no_payment_before_application)
+    - Free-form facts via 'extra' dict for lead-gen, diagnostics, vendor profiling
+    """
+    try:
+        sess = storage.sessions().get_entity(partition_key="session", row_key=sid)
+    except Exception:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    # Convert model to dict, excluding unset fields
+    payload = body.model_dump(exclude_unset=True)
+
+    # Flatten extra dict if present
+    extras = payload.pop("extra", {}) or {}
+    
+    # Merge structured fields into session
+    for k, v in payload.items():
+        sess[k] = v
+    
+    # Merge dynamic facts at same level
+    for k, v in extras.items():
+        sess[k] = v
+
+    storage.sessions().upsert_entity(sess)
+    
+    # Return combined facts for verification
+    all_facts = payload.copy()
+    all_facts.update(extras)
+    
+    return {"session_id": sid, "facts": all_facts}
 
 @app.get("/v1/session/{sid}/checklist")
 async def checklist(sid: str):

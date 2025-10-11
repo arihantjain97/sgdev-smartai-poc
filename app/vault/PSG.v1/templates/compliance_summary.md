@@ -3,6 +3,7 @@ Tone: {{style}}. Max words: {{length_limit}}.
 Cite with [source:<label>] where applicable.
 
 Context (evidence): {{evidence_window}}
+User context: {{user_prompt}}
 
 ---
 Summarise the compliance signals visible in the uploaded materials:

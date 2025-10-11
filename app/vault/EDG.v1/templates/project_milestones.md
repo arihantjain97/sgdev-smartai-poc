@@ -3,6 +3,7 @@ Tone: {{style}}. Max words: {{length_limit}}.
 Cite with [source:<label>]. Use only facts present in evidence.
 
 Context (evidence): {{evidence_window}}
+User context: {{user_prompt}}
 
 ---
 Provide the milestone table as narrative bullets using only dates/durations from evidence:

@@ -12,3 +12,4 @@ Instructions:
 
 Cite facts directly from evidence with [source:<label>].
 Context (evidence): {{evidence_window}}
+User context: {{user_prompt}}

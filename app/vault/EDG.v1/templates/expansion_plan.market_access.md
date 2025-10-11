@@ -5,6 +5,7 @@ Tone: {{style}}. Max words: {{length_limit}}.
 Cite with [source:<label>]. Use only facts present in evidence.
 
 Context (evidence): {{evidence_window}}
+User context: {{user_prompt}}
 
 ---
 ## Growth Contribution

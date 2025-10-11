@@ -13,3 +13,4 @@ Instructions:
 All costs must come from the uploaded evidence.
 Cite with [source:cost_breakdown].
 Context (evidence): {{evidence_window}}
+User context: {{user_prompt}}
