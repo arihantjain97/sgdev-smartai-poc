@@ -450,6 +450,17 @@ def debug_packs(pack: str = Query("psg"), ver: str = Query("latest-approved")):
     }
 
 
+@app.get("/v1/debug/whereami")
+def whereami():
+    import os
+    return {
+        "endpoint": os.environ.get("AZURE_SEARCH_ENDPOINT"),
+        "index": os.environ.get("AZURE_SEARCH_INDEX", "smartai-prompts"),
+        # Don't print keys. Do a minimal query to prove visibility:
+        "probe": "ok"
+    }
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
