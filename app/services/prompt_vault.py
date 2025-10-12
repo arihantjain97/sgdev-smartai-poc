@@ -29,8 +29,17 @@ def _resolve_pack(pack_hint: Optional[str]) -> Tuple[str, str]:
         if "@" in pack_hint:
             p, ver = pack_hint.split("@", 1)
             return p.strip(), ver.strip()
-        return pack_hint.strip(), "latest-approved"
-    return _active_pack()
+        p, ver = pack_hint.strip(), "latest-approved"
+    else:
+        p, ver = _active_pack()  # reads PROMPT_PACK_ACTIVE
+
+    # NEW: map "latest-approved" -> concrete version via per-pack keys
+    if ver == "latest-approved":
+        key = f"PROMPT_PACK_LATEST.{p.upper()}"        # e.g., PROMPT_PACK_LATEST.PSG
+        pinned = (cfg_get(key) or "").strip()
+        if pinned:
+            ver = pinned  # e.g., "1.0.0"
+    return p, ver
 
 def _cache_get(pack, ver, section, variant) -> Optional[dict]:
     key = (pack, ver, section, variant or "")
