@@ -14,7 +14,8 @@ Directory Structure:
     │   │   ├── appcfg.cpython-310.pyc
     │   │   ├── composer.cpython-310.pyc
     │   │   ├── prompt_vault.cpython-310.pyc
-    │   │   └── storage.cpython-310.pyc
+    │   │   ├── storage.cpython-310.pyc
+    │   │   └── taxonomy.cpython-310.pyc
     │   ├── .DS_Store
     │   ├── __init__.py
     │   ├── aoai.py
@@ -81,7 +82,7 @@ File: __pycache__/__init__.cpython-310.pyc
 
 File: __pycache__/main.cpython-310.pyc
 [main.cpython-310.pyc: start]
-[Binary file - 8920 bytes]
+[Binary file - 12581 bytes]
 [main.cpython-310.pyc: end]
 
 File: main.py
@@ -94,6 +95,11 @@ from app.services.aoai import chat_completion
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from app.services.appcfg import get_bool, get as cfg_get
+from app.services.prompt_vault import _resolve_pack as _pv_resolve
+from azure.search.documents import SearchClient
+from azure.core.credentials import AzureKeyCredential
+import os
+import json
 
 #test
 
@@ -487,6 +493,50 @@ def debug_list_evidence(sid: str, preview: int = Query(0, ge=0, le=4000)):
         raise HTTPException(status_code=500, detail=f"debug_list_evidence failed: {type(e).__name__}: {e}")
 
 
+# dev-only
+@app.get("/v1/debug/packs")
+def debug_packs(pack: str = Query("psg"), ver: str = Query("latest-approved")):
+    endpoint = os.environ["AZURE_SEARCH_ENDPOINT"].rstrip("/")
+    query_key = os.environ["AZURE_SEARCH_QUERY_KEY"]
+    index_name = os.environ.get("AZURE_SEARCH_INDEX", "smartai-prompts")
+
+    client = SearchClient(endpoint, index_name, AzureKeyCredential(query_key))
+
+    # Resolve latest-approved → concrete version using the same helper as the vault
+    resolved_pack, resolved_ver = _pv_resolve(pack) if ver == "latest-approved" else (pack, ver)
+
+    flt = f"pack_id eq '{resolved_pack}' and status eq 'approved' and version eq '{resolved_ver}'"
+
+    # IMPORTANT: only select retrievable fields; metadata_json contains section_id/version/template_key
+    rs = client.search(
+        search_text="*",
+        filter=flt,
+        top=200,
+        select=["metadata_json"],   # <- keep it to this one
+    )
+
+    items, sections = [], set()
+    for d in rs:
+        meta_raw = d.get("metadata_json") or "{}"
+        try:
+            meta = json.loads(meta_raw)
+        except Exception:
+            meta = {}
+        sid = meta.get("section_id")
+        tkey = meta.get("template_key")
+        ver  = meta.get("version")
+        if sid:
+            sections.add(sid)
+        items.append({"section_id": sid, "template_key": tkey, "version": ver})
+
+    return {
+        "pack": resolved_pack,
+        "version": resolved_ver,
+        "sections": sorted(s for s in sections if s),
+        "items": items
+    }
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
@@ -639,13 +689,18 @@ File: services/__pycache__/composer.cpython-310.pyc
 
 File: services/__pycache__/prompt_vault.cpython-310.pyc
 [prompt_vault.cpython-310.pyc: start]
-[Binary file - 2628 bytes]
+[Binary file - 2987 bytes]
 [prompt_vault.cpython-310.pyc: end]
 
 File: services/__pycache__/storage.cpython-310.pyc
 [storage.cpython-310.pyc: start]
 [Binary file - 1819 bytes]
 [storage.cpython-310.pyc: end]
+
+File: services/__pycache__/taxonomy.cpython-310.pyc
+[taxonomy.cpython-310.pyc: start]
+[Binary file - 378 bytes]
+[taxonomy.cpython-310.pyc: end]
 
 File: services/aoai.py
 [aoai.py: start]

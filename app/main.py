@@ -404,34 +404,50 @@ def debug_list_evidence(sid: str, preview: int = Query(0, ge=0, le=4000)):
         raise HTTPException(status_code=500, detail=f"debug_list_evidence failed: {type(e).__name__}: {e}")
 
 
+# dev-only
 @app.get("/v1/debug/packs")
 def debug_packs(pack: str = Query("psg"), ver: str = Query("latest-approved")):
-    # use the SAME envs your API uses at runtime
     endpoint = os.environ["AZURE_SEARCH_ENDPOINT"].rstrip("/")
     query_key = os.environ["AZURE_SEARCH_QUERY_KEY"]
     index_name = os.environ.get("AZURE_SEARCH_INDEX", "smartai-prompts")
 
     client = SearchClient(endpoint, index_name, AzureKeyCredential(query_key))
-    p, v = _pv_resolve(pack) if ver == "latest-approved" else (pack, ver)
 
-    flt = f"pack_id eq '{p}' and status eq 'approved'"
-    if v != "latest-approved":
-        flt += f" and version eq '{v}'"
+    # Resolve latest-approved → concrete version using the same helper as the vault
+    resolved_pack, resolved_ver = _pv_resolve(pack) if ver == "latest-approved" else (pack, ver)
 
-    rs = client.search(search_text="*", filter=flt, top=200, select=["metadata_json"])
-    sections = set()
-    items = []
+    flt = f"pack_id eq '{resolved_pack}' and status eq 'approved'"
+    if resolved_ver != "latest-approved":
+        flt += f" and version eq '{resolved_ver}'"
+
+    # IMPORTANT: only select retrievable fields; metadata_json contains section_id/version/template_key
+    rs = client.search(
+        search_text="*",
+        filter=flt,
+        top=200,
+        select=["metadata_json"],   # <- keep it to this one
+    )
+
+    items, sections = [], set()
     for d in rs:
-        meta = {}
+        meta_raw = d.get("metadata_json") or "{}"
         try:
-            meta = json.loads(d.get("metadata_json") or "{}")
+            meta = json.loads(meta_raw)
         except Exception:
-            pass
+            meta = {}
         sid = meta.get("section_id")
         tkey = meta.get("template_key")
-        sections.add(sid)
-        items.append({"section_id": sid, "template_key": tkey})
-    return {"pack": p, "version": v, "sections": sorted(s for s in sections if s), "items": items}
+        ver  = meta.get("version")
+        if sid:
+            sections.add(sid)
+        items.append({"section_id": sid, "template_key": tkey, "version": ver})
+
+    return {
+        "pack": resolved_pack,
+        "version": resolved_ver,
+        "sections": sorted(s for s in sections if s),
+        "items": items
+    }
 
 
 if __name__ == "__main__":
