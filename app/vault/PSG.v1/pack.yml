@@ -18,30 +18,35 @@ templates:
   solution_description:
     retrieval_tags: ["psg","solution","description","scqa"]
     file: templates/solution_description.md
+    status: approved
     rubric:
       required_tokens: ["Situation","Complication","Question","Answer"]
   
   vendor_quotation:
     retrieval_tags: ["psg","vendor","quotation","pas"]
     file: templates/vendor_quotation.md
+    status: approved
     rubric:
       required_tokens: ["Problem","Agitate","Solve"]
   
   cost_breakdown:
     retrieval_tags: ["psg","cost","breakdown","pas"]
     file: templates/cost_breakdown.md
+    status: approved
     rubric:
       required_tokens: ["Problem","Agitate","Solve"]
 
   business_impact:
     retrieval_tags: ["psg","impact","productivity","scqa"]
     file: templates/business_impact.md
+    status: approved
     rubric:
       required_tokens: ["Situation","Complication","Question","Answer"]
 
   compliance_summary:
     retrieval_tags: ["psg","compliance","summary"]
     file: templates/compliance_summary.md
+    status: approved
     rubric:
       required_tokens: ["Annex","Deployment","Payment","Cost"]
     evidence_hints:

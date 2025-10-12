@@ -223,6 +223,28 @@ async def upsert_session_facts(sid: str, body: SessionFactsReq):
     
     return {"session_id": sid, "facts": all_facts}
 
+# ------------------------------------------------------------
+# Validation Stub (non-blocking)
+# ------------------------------------------------------------
+@app.post("/v1/session/{sid}/validate")
+async def validate_session(sid: str):
+    """
+    Grant-agnostic validation stub.
+    Returns validation checks for the session (eligibility, completeness, etc.)
+    Currently a non-blocking stub - can be expanded with specific rules later.
+    """
+    try:
+        sess = storage.sessions().get_entity(partition_key="session", row_key=sid)
+    except Exception:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    # Start empty; you can add simple rules later
+    # Example future checks:
+    # - Grant-specific eligibility rules
+    # - Required evidence completeness
+    # - Data quality checks
+    return {"session_id": sid, "checks": []}
+
 @app.get("/v1/session/{sid}/checklist")
 async def checklist(sid: str):
     # Read the session to know which grant this session is for
@@ -266,18 +288,37 @@ class DraftReq(BaseModel):
     inputs: dict = {}
 
 
-@app.post("/v1/grants/edg/draft")
-async def draft(req: DraftReq, response: Response):
+# ------------------------------------------------------------
+# Shared Draft Helper (grant-agnostic)
+# ------------------------------------------------------------
+async def _do_draft(req: DraftReq, response: Response, *, pack_hint: str):
+    """
+    Unified draft logic for any grant type.
+    Uses pack_hint to select the appropriate prompt pack (edg, psg, etc.)
+    """
     fw = taxonomy.pick_framework(req.section_id)
 
-    # --- Evidence selection rules ---
+    # --- Evidence selection rules (EDG + PSG comprehensive defaults) ---
     # 1) If caller provides inputs.evidence_labels (list), use that order.
     # 2) Else if caller provides legacy inputs.evidence_label (single), use it.
     # 3) Else use sensible defaults per section.
     DEFAULT_EVIDENCE_BY_SECTION = {
+        # EDG sections
         "business_case": ["acra_bizfile", "audited_financials"],
-        "consultancy_scope": ["acra_bizfile"]
+        "consultancy_scope": ["acra_bizfile"],
+        "about_company": ["acra_bizfile", "audited_financials"],
+        "about_project": ["acra_bizfile", "audited_financials"],
+        "expansion_plan": ["acra_bizfile", "audited_financials"],
+        "project_outcomes": ["audited_financials"],
+        "project_milestones": ["acra_bizfile"],
+        # PSG sections
+        "solution_description": ["vendor_quotation", "product_brochure"],
+        "vendor_quotation": ["vendor_quotation"],
+        "cost_breakdown": ["cost_breakdown"],
+        "business_impact": ["vendor_quotation", "cost_breakdown"],
+        "compliance_summary": ["vendor_quotation", "cost_breakdown", "deployment_location_proof"],
     }
+
     labels = None
     try:
         labels = req.inputs.get("evidence_labels")
@@ -321,32 +362,96 @@ async def draft(req: DraftReq, response: Response):
         req.inputs["evidence_labels"] = evidence_used
         req.inputs["evidence_label"] = ",".join(evidence_used)  # back-compat for any single-label template
 
+    # --- Pack selection via pack_hint (EDG/PSG/etc.) ---
     try:
         msgs, packver, evidence_order_used = composer.compose_instruction(
             req.section_id, 
             fw, 
             req.inputs or {}, 
             snippet,
-            section_variant=req.section_variant
+            section_variant=req.section_variant,
+            pack_hint=pack_hint  # IMPORTANT: drives pack selection
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Prompt Vault error: {type(e).__name__}: {e}")
+
     response.headers["x-prompt-pack"] = packver
+
+    # --- Call AOAI ---
     try:
         out = await chat_completion(msgs, use="worker")
     except ValueError as e:
         raise HTTPException(status_code=400, detail=f"Model deployment error: {str(e)}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"AI service error: {str(e)}")
-    
+
+    # --- Soft evaluator ---
     ev = evaluator.score(out, require_tokens=["source:"] if any(c.isdigit() for c in out) else None)
+
+    # --- Lightweight warnings (grant-specific checks) ---
+    warnings = []
+    try:
+        sess = storage.sessions().get_entity(partition_key="session", row_key=req.session_id)
+        grant = (sess.get("grant") or "").upper()
+        if grant == "PSG":
+            equity = float(sess.get("local_equity_pct") or 0)
+            if equity < 30:
+                warnings.append({
+                    "code": "PSG.ELIG.LOCAL_EQUITY_MIN_30",
+                    "level": "warning",
+                    "message": "Local equity below 30% (PSG minimum).",
+                })
+    except Exception:
+        pass
+
     return {
         "section_id": req.section_id,
         "framework": fw,
         "evidence_used": evidence_order_used,  # Use the ordered labels from composer
         "output": out,
-        "evaluation": ev
+        "evaluation": ev,
+        "warnings": warnings,
     }
+
+
+# ------------------------------------------------------------
+# Unified Draft Endpoint (grant-agnostic)
+# ------------------------------------------------------------
+@app.post("/v1/draft")
+async def draft_any(req: DraftReq, response: Response):
+    """
+    Grant-agnostic draft endpoint.
+    Determines grant type from session and selects appropriate prompt pack.
+    """
+    # Determine grant/pack from the session
+    try:
+        sess = storage.sessions().get_entity(partition_key="session", row_key=req.session_id)
+    except Exception:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    grant = (sess.get("grant") or "EDG").lower()
+    return await _do_draft(req, response, pack_hint=grant)
+
+
+# ------------------------------------------------------------
+# Backward-Compatible Grant-Specific Wrappers
+# ------------------------------------------------------------
+@app.post("/v1/grants/edg/draft")
+async def draft_edg(req: DraftReq, response: Response):
+    """
+    EDG-specific draft endpoint (backward-compatible wrapper).
+    Forwards to unified draft logic with pack_hint='edg'.
+    """
+    return await _do_draft(req, response, pack_hint="edg")
+
+
+@app.post("/v1/grants/psg/draft")
+async def draft_psg(req: DraftReq, response: Response):
+    """
+    PSG-specific draft endpoint (backward-compatible wrapper).
+    Forwards to unified draft logic with pack_hint='psg'.
+    """
+    return await _do_draft(req, response, pack_hint="psg")
 
 def _strip_label(sid: str, name: str) -> str:
     # safe strip without relying on removeprefix/removesuffix
@@ -875,6 +980,18 @@ def _active_pack() -> Tuple[str,str]:
     p, ver = v.split("@",1)
     return p, ver
 
+def _resolve_pack(pack_hint: Optional[str]) -> Tuple[str, str]:
+    """
+    Resolve pack and version from hint or fall back to active pack.
+    Accept forms: "psg", "edg", "psg@1.0.0"
+    """
+    if pack_hint:
+        if "@" in pack_hint:
+            p, ver = pack_hint.split("@", 1)
+            return p.strip(), ver.strip()
+        return pack_hint.strip(), "latest-approved"
+    return _active_pack()
+
 def _cache_get(pack, ver, section, variant) -> Optional[dict]:
     key = (pack, ver, section, variant or "")
     item = _cache.get(key)
@@ -886,7 +1003,8 @@ def _cache_set(pack, ver, section, variant, doc, ttl=30):
     _cache[(pack,ver,section,variant or "")] = (doc, time.time()+ttl)
 
 def retrieve_template(section_id: str, tags: Optional[List[str]] = None, section_variant: Optional[str] = None, pack_hint: Optional[str] = None) -> dict:
-    pack, ver = _active_pack()
+    # NEW: resolve desired pack first (honors pack_hint if provided)
+    pack, ver = _resolve_pack(pack_hint)
     cached = _cache_get(pack, ver, section_id, section_variant)
     if cached:
         return cached
@@ -1620,30 +1738,35 @@ templates:
   solution_description:
     retrieval_tags: ["psg","solution","description","scqa"]
     file: templates/solution_description.md
+    status: approved
     rubric:
       required_tokens: ["Situation","Complication","Question","Answer"]
   
   vendor_quotation:
     retrieval_tags: ["psg","vendor","quotation","pas"]
     file: templates/vendor_quotation.md
+    status: approved
     rubric:
       required_tokens: ["Problem","Agitate","Solve"]
   
   cost_breakdown:
     retrieval_tags: ["psg","cost","breakdown","pas"]
     file: templates/cost_breakdown.md
+    status: approved
     rubric:
       required_tokens: ["Problem","Agitate","Solve"]
 
   business_impact:
     retrieval_tags: ["psg","impact","productivity","scqa"]
     file: templates/business_impact.md
+    status: approved
     rubric:
       required_tokens: ["Situation","Complication","Question","Answer"]
 
   compliance_summary:
     retrieval_tags: ["psg","compliance","summary"]
     file: templates/compliance_summary.md
+    status: approved
     rubric:
       required_tokens: ["Annex","Deployment","Payment","Cost"]
     evidence_hints:

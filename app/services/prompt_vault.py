@@ -20,6 +20,18 @@ def _active_pack() -> Tuple[str,str]:
     p, ver = v.split("@",1)
     return p, ver
 
+def _resolve_pack(pack_hint: Optional[str]) -> Tuple[str, str]:
+    """
+    Resolve pack and version from hint or fall back to active pack.
+    Accept forms: "psg", "edg", "psg@1.0.0"
+    """
+    if pack_hint:
+        if "@" in pack_hint:
+            p, ver = pack_hint.split("@", 1)
+            return p.strip(), ver.strip()
+        return pack_hint.strip(), "latest-approved"
+    return _active_pack()
+
 def _cache_get(pack, ver, section, variant) -> Optional[dict]:
     key = (pack, ver, section, variant or "")
     item = _cache.get(key)
@@ -31,7 +43,8 @@ def _cache_set(pack, ver, section, variant, doc, ttl=30):
     _cache[(pack,ver,section,variant or "")] = (doc, time.time()+ttl)
 
 def retrieve_template(section_id: str, tags: Optional[List[str]] = None, section_variant: Optional[str] = None, pack_hint: Optional[str] = None) -> dict:
-    pack, ver = _active_pack()
+    # NEW: resolve desired pack first (honors pack_hint if provided)
+    pack, ver = _resolve_pack(pack_hint)
     cached = _cache_get(pack, ver, section_id, section_variant)
     if cached:
         return cached
