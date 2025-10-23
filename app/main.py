@@ -455,7 +455,7 @@ def whereami():
     import os
     return {
         "endpoint": os.environ.get("AZURE_SEARCH_ENDPOINT"),
-        "index": os.environ.get("AZURE_SEARCH_INDEX", "smartai-prompts"),
+        "index": os.environ.get("AZURE_SEARCH_INDEX", "smartai-prompts-v2"),
         # Don't print keys. Do a minimal query to prove visibility:
         "probe": "ok"
     }

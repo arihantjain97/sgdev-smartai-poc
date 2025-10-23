@@ -1,0 +1,14 @@
+{
+  "name": "smartai-prompts-v2",
+  "fields": [
+    {"name":"id",           "type":"Edm.String",                 "key":true,  "retrievable":true},
+    {"name":"pack_id",      "type":"Edm.String", "filterable":true,           "retrievable":true},
+    {"name":"version",      "type":"Edm.String", "filterable":true, "sortable":true, "retrievable":true},
+    {"name":"status",       "type":"Edm.String", "filterable":true,           "retrievable":true},
+    {"name":"section_id",   "type":"Edm.String", "filterable":true,           "retrievable":true},
+    {"name":"retrieval_tags","type":"Collection(Edm.String)","filterable":true,"facetable":true,"retrievable":true},
+    {"name":"template_text","type":"Edm.String", "searchable":true,           "retrievable":true},
+    {"name":"metadata_json","type":"Edm.String",                                 "retrievable":true}
+  ],
+  "similarity": { "@odata.type":"#Microsoft.Azure.Search.BM25Similarity" }
+}
