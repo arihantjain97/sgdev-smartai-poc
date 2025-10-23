@@ -82,7 +82,7 @@ File: __pycache__/__init__.cpython-310.pyc
 
 File: __pycache__/main.cpython-310.pyc
 [main.cpython-310.pyc: start]
-[Binary file - 12605 bytes]
+[Binary file - 12842 bytes]
 [main.cpython-310.pyc: end]
 
 File: main.py
@@ -536,6 +536,17 @@ def debug_packs(pack: str = Query("psg"), ver: str = Query("latest-approved")):
         "version": resolved_ver,
         "sections": sorted(s for s in sections if s),
         "items": items
+    }
+
+
+@app.get("/v1/debug/whereami")
+def whereami():
+    import os
+    return {
+        "endpoint": os.environ.get("AZURE_SEARCH_ENDPOINT"),
+        "index": os.environ.get("AZURE_SEARCH_INDEX", "smartai-prompts-v2"),
+        # Don't print keys. Do a minimal query to prove visibility:
+        "probe": "ok"
     }
 
 
