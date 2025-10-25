@@ -1,0 +1,1 @@
+{"id":"edg-pm-001","inputs":{"style":"Formal, outcome-oriented","length_limit":200},"evidence_labels":["audited_financials"],"assert":{"groundedness_min":0.80,"length_max_words":220,"citation_coverage_min":0.40}}
