@@ -1,10 +1,16 @@
-from fastapi import FastAPI, UploadFile, Form, Query, HTTPException
-from pydantic import BaseModel
+from typing import Any
+from fastapi import FastAPI, UploadFile, Form, Query, HTTPException, Response
+from pydantic import BaseModel, Field
 from app.services import storage, taxonomy, composer, evaluator
 from app.services.aoai import chat_completion
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from app.services.appcfg import get_bool, get as cfg_get
+from app.services.prompt_vault import _resolve_pack as _pv_resolve
+from azure.search.documents import SearchClient
+from azure.core.credentials import AzureKeyCredential
+import os
+import json
 
 #test
 
@@ -44,6 +50,29 @@ class SessionCreate(BaseModel):
     grant: str = "EDG"
     company_name: str | None = None
 
+# ------------------------------------------------------------
+# Generic Fact Schema (base for all session metadata)
+# ------------------------------------------------------------
+class SessionFactsReq(BaseModel):
+    """
+    Generic session fact capture for eligibility, profiling, diagnostics.
+    Works across grants, lead-gen, vendor profiling, and other use cases.
+    """
+    # Common across SME-type use cases
+    local_equity_pct: float | None = Field(None, ge=0, le=100, description="Local equity percentage")
+    turnover: float | None = Field(None, ge=0, description="Annual turnover/revenue")
+    headcount: int | None = Field(None, ge=0, description="Number of employees")
+
+    # Grant-specific attestations (optional)
+    used_in_singapore: bool | None = Field(None, description="Will the grant outcome be used in Singapore?")
+    no_payment_before_application: bool | None = Field(None, description="No payment made before application?")
+
+    # Open extension for other verticals (lead-gen, diagnostics, etc.)
+    extra: dict[str, Any] | None = Field(
+        None,
+        description="Free-form key-value facts, e.g. {'industry':'F&B','budget_range':'<50k'}"
+    )
+
 @app.post("/v1/session")
 async def create_session(body: SessionCreate):
     table = storage.sessions()
@@ -52,35 +81,161 @@ async def create_session(body: SessionCreate):
     table.upsert_entity(entity)
     return {"session_id": sid}
 
+# ------------------------------------------------------------
+# Session Getter (debug / general retrieval)
+# ------------------------------------------------------------
+@app.get("/v1/session/{sid}")
+async def get_session(sid: str):
+    """
+    Retrieve session metadata including all facts.
+    """
+    try:
+        sess = storage.sessions().get_entity(partition_key="session", row_key=sid)
+    except Exception:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return {"session_id": sid, "session": dict(sess)}
+
+# ------------------------------------------------------------
+# Unified Fact Upsert Endpoint
+# ------------------------------------------------------------
+@app.post("/v1/session/{sid}/facts")
+@app.post("/v1/session/{sid}/eligibility")  # backward-compatible alias
+async def upsert_session_facts(sid: str, body: SessionFactsReq):
+    """
+    Upsert structured facts for a session (eligibility, profiling, diagnostics).
+    
+    This endpoint works as both:
+    - /facts: Generic key-value fact capture for any use case
+    - /eligibility: Backward-compatible alias for grant eligibility data
+    
+    Supports:
+    - EDG/PSG grant eligibility (local_equity_pct, turnover, headcount)
+    - Grant attestations (used_in_singapore, no_payment_before_application)
+    - Free-form facts via 'extra' dict for lead-gen, diagnostics, vendor profiling
+    """
+    try:
+        sess = storage.sessions().get_entity(partition_key="session", row_key=sid)
+    except Exception:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    # Convert model to dict, excluding unset fields
+    payload = body.model_dump(exclude_unset=True)
+
+    # Flatten extra dict if present
+    extras = payload.pop("extra", {}) or {}
+    
+    # Merge structured fields into session
+    for k, v in payload.items():
+        sess[k] = v
+    
+    # Merge dynamic facts at same level
+    for k, v in extras.items():
+        sess[k] = v
+
+    storage.sessions().upsert_entity(sess)
+    
+    # Return combined facts for verification
+    all_facts = payload.copy()
+    all_facts.update(extras)
+    
+    return {"session_id": sid, "facts": all_facts}
+
+# ------------------------------------------------------------
+# Validation Stub (non-blocking)
+# ------------------------------------------------------------
+@app.post("/v1/session/{sid}/validate")
+async def validate_session(sid: str):
+    """
+    Grant-agnostic validation stub.
+    Returns validation checks for the session (eligibility, completeness, etc.)
+    Currently a non-blocking stub - can be expanded with specific rules later.
+    """
+    try:
+        sess = storage.sessions().get_entity(partition_key="session", row_key=sid)
+    except Exception:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    # Start empty; you can add simple rules later
+    # Example future checks:
+    # - Grant-specific eligibility rules
+    # - Required evidence completeness
+    # - Data quality checks
+    return {"session_id": sid, "checks": []}
+
 @app.get("/v1/session/{sid}/checklist")
 async def checklist(sid: str):
-    # Toy: two drafts + three uploads
-    tasks = [
-      {"id":"acra_extract", "type":"upload"},
-      {"id":"audited_financials","type":"upload"},
-      {"id":"vendor_quotation","type":"upload"},
-      {"id":"consultancy_scope","type":"draft"},
-      {"id":"business_case","type":"draft"}
-    ]
-    return {"session_id":sid,"tasks":tasks}
+    # Read the session to know which grant this session is for
+    try:
+        sess = storage.sessions().get_entity(partition_key="session", row_key=sid)
+        grant = (sess.get("grant") or "EDG").upper()
+    except Exception:
+        # If session not found or table hiccups, fall back safely
+        grant = "EDG"
+
+    if grant == "PSG":
+        # PSG: uploads + drafts (no variant needed)
+        tasks = [
+            {"id": "vendor_quotation", "type": "upload"},
+            {"id": "cost_breakdown", "type": "upload"},
+            {"id": "business_impact", "type": "draft", "section_variant": None},
+            {"id": "solution_description", "type": "draft", "section_variant": None},
+            # (optional) compliance summary draft for your reviewers/UI
+            {"id": "compliance_summary", "type": "draft", "section_variant": None},
+        ]
+    else:
+        # EDG: uploads + drafts (WITH a variant example)
+        tasks = [
+            {"id": "acra_bizfile", "type": "upload"},
+            {"id": "audited_financials", "type": "upload"},
+            {"id": "consultancy_scope", "type": "draft", "section_variant": None},
+            # Example: drive the "About the Project – I&P (Automation)" variant
+            {"id": "about_project", "type": "draft",
+             "section_variant": "about_project.i_and_p.automation"},
+            # (optional) include a Market Access draft variant
+            {"id": "expansion_plan", "type": "draft",
+             "section_variant": "expansion_plan.market_access"},
+        ]
+
+    return {"session_id": sid, "grant": grant, "tasks": tasks}
 
 class DraftReq(BaseModel):
     session_id: str
     section_id: str
+    section_variant: str | None = None
     inputs: dict = {}
 
-@app.post("/v1/grants/edg/draft")
-async def draft(req: DraftReq):
+
+# ------------------------------------------------------------
+# Shared Draft Helper (grant-agnostic)
+# ------------------------------------------------------------
+async def _do_draft(req: DraftReq, response: Response, *, pack_hint: str):
+    """
+    Unified draft logic for any grant type.
+    Uses pack_hint to select the appropriate prompt pack (edg, psg, etc.)
+    """
     fw = taxonomy.pick_framework(req.section_id)
 
-    # --- Evidence selection rules ---
+    # --- Evidence selection rules (EDG + PSG comprehensive defaults) ---
     # 1) If caller provides inputs.evidence_labels (list), use that order.
     # 2) Else if caller provides legacy inputs.evidence_label (single), use it.
     # 3) Else use sensible defaults per section.
     DEFAULT_EVIDENCE_BY_SECTION = {
-        "business_case": ["acra_extract", "audited_financials"],
-        "consultancy_scope": ["acra_extract"]
+        # EDG sections
+        "business_case": ["acra_bizfile", "audited_financials"],
+        "consultancy_scope": ["acra_bizfile"],
+        "about_company": ["acra_bizfile", "audited_financials"],
+        "about_project": ["acra_bizfile", "audited_financials"],
+        "expansion_plan": ["acra_bizfile", "audited_financials"],
+        "project_outcomes": ["audited_financials"],
+        "project_milestones": ["acra_bizfile"],
+        # PSG sections
+        "solution_description": ["vendor_quotation", "product_brochure"],
+        "vendor_quotation": ["vendor_quotation"],
+        "cost_breakdown": ["cost_breakdown"],
+        "business_impact": ["vendor_quotation", "cost_breakdown"],
+        "compliance_summary": ["vendor_quotation", "cost_breakdown", "deployment_location_proof"],
     }
+
     labels = None
     try:
         labels = req.inputs.get("evidence_labels")
@@ -124,22 +279,96 @@ async def draft(req: DraftReq):
         req.inputs["evidence_labels"] = evidence_used
         req.inputs["evidence_label"] = ",".join(evidence_used)  # back-compat for any single-label template
 
-    msgs = composer.compose_instruction(req.section_id, fw, req.inputs, snippet)
+    # --- Pack selection via pack_hint (EDG/PSG/etc.) ---
+    try:
+        msgs, packver, evidence_order_used = composer.compose_instruction(
+            req.section_id, 
+            fw, 
+            req.inputs or {}, 
+            snippet,
+            section_variant=req.section_variant,
+            pack_hint=pack_hint  # IMPORTANT: drives pack selection
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Prompt Vault error: {type(e).__name__}: {e}")
+
+    response.headers["x-prompt-pack"] = packver
+
+    # --- Call AOAI ---
     try:
         out = await chat_completion(msgs, use="worker")
     except ValueError as e:
         raise HTTPException(status_code=400, detail=f"Model deployment error: {str(e)}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"AI service error: {str(e)}")
-    
+
+    # --- Soft evaluator ---
     ev = evaluator.score(out, require_tokens=["source:"] if any(c.isdigit() for c in out) else None)
+
+    # --- Lightweight warnings (grant-specific checks) ---
+    warnings = []
+    try:
+        sess = storage.sessions().get_entity(partition_key="session", row_key=req.session_id)
+        grant = (sess.get("grant") or "").upper()
+        if grant == "PSG":
+            equity = float(sess.get("local_equity_pct") or 0)
+            if equity < 30:
+                warnings.append({
+                    "code": "PSG.ELIG.LOCAL_EQUITY_MIN_30",
+                    "level": "warning",
+                    "message": "Local equity below 30% (PSG minimum).",
+                })
+    except Exception:
+        pass
+
     return {
         "section_id": req.section_id,
         "framework": fw,
-        "evidence_used": evidence_used,
+        "evidence_used": evidence_order_used,  # Use the ordered labels from composer
         "output": out,
-        "evaluation": ev
+        "evaluation": ev,
+        "warnings": warnings,
     }
+
+
+# ------------------------------------------------------------
+# Unified Draft Endpoint (grant-agnostic)
+# ------------------------------------------------------------
+@app.post("/v1/draft")
+async def draft_any(req: DraftReq, response: Response):
+    """
+    Grant-agnostic draft endpoint.
+    Determines grant type from session and selects appropriate prompt pack.
+    """
+    # Determine grant/pack from the session
+    try:
+        sess = storage.sessions().get_entity(partition_key="session", row_key=req.session_id)
+    except Exception:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    grant = (sess.get("grant") or "EDG").lower()
+    return await _do_draft(req, response, pack_hint=grant)
+
+
+# ------------------------------------------------------------
+# Backward-Compatible Grant-Specific Wrappers
+# ------------------------------------------------------------
+@app.post("/v1/grants/edg/draft")
+async def draft_edg(req: DraftReq, response: Response):
+    """
+    EDG-specific draft endpoint (backward-compatible wrapper).
+    Forwards to unified draft logic with pack_hint='edg'.
+    """
+    return await _do_draft(req, response, pack_hint="edg")
+
+
+@app.post("/v1/grants/psg/draft")
+async def draft_psg(req: DraftReq, response: Response):
+    """
+    PSG-specific draft endpoint (backward-compatible wrapper).
+    Forwards to unified draft logic with pack_hint='psg'.
+    """
+    return await _do_draft(req, response, pack_hint="psg")
 
 def _strip_label(sid: str, name: str) -> str:
     # safe strip without relying on removeprefix/removesuffix
@@ -173,6 +402,63 @@ def debug_list_evidence(sid: str, preview: int = Query(0, ge=0, le=4000)):
     except Exception as e:
         # Return a clear 500 body so you can see the exact cause in the browser
         raise HTTPException(status_code=500, detail=f"debug_list_evidence failed: {type(e).__name__}: {e}")
+
+
+# dev-only
+@app.get("/v1/debug/packs")
+def debug_packs(pack: str = Query("psg"), ver: str = Query("latest-approved")):
+    endpoint = os.environ["AZURE_SEARCH_ENDPOINT"].rstrip("/")
+    query_key = os.environ["AZURE_SEARCH_QUERY_KEY"]
+    index_name = os.environ.get("AZURE_SEARCH_INDEX", "smartai-prompts")
+
+    client = SearchClient(endpoint, index_name, AzureKeyCredential(query_key))
+
+    # Resolve latest-approved → concrete version using the same helper as the vault
+    resolved_pack, resolved_ver = _pv_resolve(pack) if ver == "latest-approved" else (pack, ver)
+
+    flt = f"pack_id eq '{resolved_pack}' and status eq 'approved'"
+    if resolved_ver != "latest-approved":
+        flt += f" and version eq '{resolved_ver}'"
+
+    # IMPORTANT: only select retrievable fields; metadata_json contains section_id/version/template_key
+    rs = client.search(
+        search_text="*",
+        filter=flt,
+        top=200,
+        select=["metadata_json"],   # <- keep it to this one
+    )
+
+    items, sections = [], set()
+    for d in rs:
+        meta_raw = d.get("metadata_json") or "{}"
+        try:
+            meta = json.loads(meta_raw)
+        except Exception:
+            meta = {}
+        sid = meta.get("section_id")
+        tkey = meta.get("template_key")
+        ver  = meta.get("version")
+        if sid:
+            sections.add(sid)
+        items.append({"section_id": sid, "template_key": tkey, "version": ver})
+
+    return {
+        "pack": resolved_pack,
+        "version": resolved_ver,
+        "sections": sorted(s for s in sections if s),
+        "items": items
+    }
+
+
+@app.get("/v1/debug/whereami")
+def whereami():
+    import os
+    return {
+        "endpoint": os.environ.get("AZURE_SEARCH_ENDPOINT"),
+        "index": os.environ.get("AZURE_SEARCH_INDEX", "smartai-prompts-v2"),
+        # Don't print keys. Do a minimal query to prove visibility:
+        "probe": "ok"
+    }
 
 
 if __name__ == "__main__":
