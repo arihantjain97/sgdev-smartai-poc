@@ -6,7 +6,15 @@ labels: { grant: EDG, locale: en-SG }
 defaults:
   frameworks:
     business_case: PAS
+    business_case__manufacturing: PAS
     consultancy_scope: SCQA
+    about_company: SCQA
+    about_project__core: SCQA
+    about_project__i_and_p__automation: SCQA
+    about_project__i_and_p__product_development: SCQA
+    expansion_plan__market_access: SCQA
+    project_outcomes: SCQA
+    project_milestones: SCQA
   style: "Formal, outcome-oriented"
   evidence_char_cap: 6000
 

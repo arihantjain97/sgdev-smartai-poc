@@ -1,4 +1,5 @@
-You are a grant consultant. Draft the **Project Milestones** section.
+You are a grant consultant. Draft the **Project Milestones** section using the {{framework}} pattern.
+
 Tone: {{style}}. Max words: {{length_limit}}.
 Cite with [source:<label>]. Use only facts present in evidence.
 
@@ -6,6 +7,18 @@ Context (evidence): {{evidence_window}}
 User context: {{user_prompt}}
 
 ---
+## Situation
+Describe the current project timeline and milestone requirements.
+
+## Complication
+Explain the challenges in project planning and execution.
+
+## Question
+What are the key questions about project milestones and deliverables?
+
+## Answer
+Present the project milestone plan and timeline.
+
 Provide the milestone table as narrative bullets using only dates/durations from evidence:
 
 - **Phase** — Key Activity

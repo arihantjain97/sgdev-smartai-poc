@@ -1,5 +1,5 @@
 pack_id: psg
-version: 1.0.0
+version: 1.0.1
 status: approved     # draft | candidate | approved
 labels:
   grant: PSG
@@ -11,6 +11,7 @@ defaults:
     vendor_quotation: PAS
     cost_breakdown: PAS
     business_impact: SCQA
+    compliance_summary: SCQA
   style: "Formal, outcome-oriented"
   evidence_char_cap: 6000
 
