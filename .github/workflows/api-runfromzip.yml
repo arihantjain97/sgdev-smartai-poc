@@ -24,14 +24,21 @@ jobs:
         with:
           python-version: "3.10"
 
-      - name: Vendor deps into package/
+      - name: Vendor deps into package/ (manylinux2014)
         run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt -t package/
+          rm -rf package && mkdir -p package
+          # Use pypa manylinux2014 image's Python 3.10 pip to install wheels into /work/package
+          docker run --rm -v "$PWD":/work quay.io/pypa/manylinux2014_x86_64 \
+            /opt/python/cp310-cp310/bin/pip install \
+              --upgrade pip \
+              --only-binary=:all: \
+              -r /work/requirements.txt \
+              -t /work/package
           rsync -a app/ package/app/
           cp startup.sh package/
           chmod +x package/startup.sh
-          ls -la package/
+          python -V
+          ls -la package/ | sed -n '1,120p'
 
       - name: Zip bundle
         run: |
