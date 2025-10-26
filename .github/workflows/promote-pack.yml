@@ -1,0 +1,47 @@
+# (manual; next step)
+
+name: Promote Pack
+on:
+  workflow_dispatch:
+    inputs:
+      packs:
+        description: "Comma-separated packs, e.g. psg@1.0.0,edg@1.0.1"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    environment: dev   # <— protect this env with required reviewers
+    env:
+      AZURE_SEARCH_ENDPOINT: https://sgdev-search-01.search.windows.net
+      AZURE_SEARCH_INDEX: smartai-prompts-v2
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.10" }   # match App Service
+      - run: pip install -r requirements.txt
+      - name: Validate packs input
+        run: |
+          if [ -z "${{ inputs.packs }}" ]; then
+            echo "packs input is required"; exit 1
+          fi
+      - name: Build approved payload
+        run: python tools/build_index_payload.py --status approved --packs "${{ inputs.packs }}" --out artifacts/index_docs.json
+      - name: Index to Azure Search
+        env:
+          AZURE_SEARCH_ADMIN_KEY: ${{ secrets.AZURE_SEARCH_ADMIN_KEY }}
+        run: python tools/index_packs.py --in artifacts/index_docs.json
+      - name: Wire-check
+        env:
+          AZURE_SEARCH_QUERY_KEY: ${{ secrets.AZURE_SEARCH_QUERY_KEY }}
+        run: python tools/wire_check.py --packs "${{ inputs.packs }}"
+      - name: Upload promote artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: promote-artifacts
+          path: artifacts/
+
