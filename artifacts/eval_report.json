@@ -1,0 +1,42 @@
+{
+  "results": [
+    {
+      "pack": "TEST",
+      "version": "1.0.0",
+      "section": "business_case",
+      "groundedness_proxy": 0.4,
+      "chars": 166,
+      "min_grounded": 0.8,
+      "max_chars": 12000,
+      "path": "/var/folders/7m/wxpl5qvs7vj2sxm199vtmd200000gn/T/tmposzmsy8s/app/vault/TEST.v1/templates/business_case.md"
+    },
+    {
+      "pack": "TEST",
+      "version": "1.0.0",
+      "section": "about_company",
+      "groundedness_proxy": 0.25,
+      "chars": 107,
+      "min_grounded": 0.8,
+      "max_chars": 12000,
+      "path": "/var/folders/7m/wxpl5qvs7vj2sxm199vtmd200000gn/T/tmposzmsy8s/app/vault/TEST.v1/templates/about_company.md"
+    }
+  ],
+  "failures": [
+    {
+      "pack": "TEST",
+      "version": "1.0.0",
+      "section": "business_case",
+      "reasons": [
+        "groundedness 0.40 < 0.80"
+      ]
+    },
+    {
+      "pack": "TEST",
+      "version": "1.0.0",
+      "section": "about_company",
+      "reasons": [
+        "groundedness 0.25 < 0.80"
+      ]
+    }
+  ]
+}
