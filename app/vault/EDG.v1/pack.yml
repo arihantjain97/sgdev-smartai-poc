@@ -21,10 +21,12 @@ defaults:
 templates:
   business_case:
     retrieval_tags: ["business_case","edg","pas","generic"]
+    section_id: business_case
     file: templates/business_case.md
     rubric:
       required_tokens: ["Problem","Agitate","Solve"]
   consultancy_scope:
+    section_id: consultancy_scope
     retrieval_tags: ["scope","edg","scqa","generic"]
     file: templates/consultancy_scope.md
     rubric:
