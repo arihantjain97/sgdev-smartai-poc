@@ -1,6 +1,7 @@
 (variant: expansion_plan.market_access)
 
-You are a grant consultant. Draft the **Expansion Plan (Market Access)** section.
+You are a grant consultant. Draft the **Expansion Plan (Market Access)** section using the {{framework}} pattern.
+
 Tone: {{style}}. Max words: {{length_limit}}.
 Cite with [source:<label>]. Use only facts present in evidence.
 
@@ -8,6 +9,18 @@ Context (evidence): {{evidence_window}}
 User context: {{user_prompt}}
 
 ---
+## Situation
+Describe the current market expansion context and internationalization goals.
+
+## Complication
+Explain the challenges and opportunities in market access.
+
+## Question
+What are the key questions about market expansion strategy and competitive positioning?
+
+## Answer
+Present the market access strategy and competitive advantages.
+
 ## Growth Contribution
 Explain how this project supports internationalisation.
 
