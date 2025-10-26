@@ -1,0 +1,50 @@
+name: CI Packs
+
+on:
+  pull_request:
+    paths:
+      - "app/vault/**"
+      - "tools/**"
+      - "smartai-prompts-v2.schema.json"
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          # ensure yamls & (optional) jsonschema for lint
+          pip install pyyaml jsonschema
+
+      - name: Lint packs (schema + structure tokens)
+        run: python tools/lint_packs.py --vault app/vault
+
+      - name: Build candidate payload
+        run: python tools/build_index_payload.py --status candidate --out artifacts/index_docs.json
+
+      - name: Offline eval (goldens proxy)
+        run: |
+          python tools/offline_eval.py \
+            --vault app/vault \
+            --goldens "app/vault/**/golden/*.jsonl" \
+            --min_grounded 0.80 \
+            --max_chars 12000 \
+            --out artifacts/eval_report.json \
+            --dry-worker
+
+      - name: Upload CI artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: packs-ci-artifacts
+          path: artifacts/

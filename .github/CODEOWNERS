@@ -1,0 +1,6 @@
+# Packs → content owners
+app/vault/**   @your-handle-or-team
+
+# API → engineers
+app/**         @your-eng-team
+
