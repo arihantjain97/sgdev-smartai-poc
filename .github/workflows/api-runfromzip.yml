@@ -29,7 +29,8 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt -t package/
           rsync -a app/ package/app/
-          # Optionally include config files required at runtime
+          cp startup.sh package/
+          chmod +x package/startup.sh
           ls -la package/
 
       - name: Zip bundle

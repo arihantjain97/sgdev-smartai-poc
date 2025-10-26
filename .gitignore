@@ -211,3 +211,7 @@ output.txt
 
 #zipped
 *.zip
+
+# GitHub workflow log files
+.github/workflows/sgdev-smartai-api-01-Log stream
+.github/workflows/workflow-API-Run-from-Zip-logs
