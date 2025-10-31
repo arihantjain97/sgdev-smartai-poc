@@ -158,21 +158,48 @@ def main():
             errors.append(f"[PACK] {pack_yml_path}: templates/ folder missing")
             continue
 
-        # Enforce section→template parity
+        # Enforce section→template parity and validate rubrics
         for sec in sections:
             f = tmpl_dir / f"{sec}.md"
             if not f.exists():
                 errors.append(f"[PACK] {pack_yml_path}: section '{sec}' missing template {f}")
-
-        # Decide structure expectation by filename heuristic
-        for md in sorted(tmpl_dir.glob("*.md")):
-            text = md.read_text(encoding="utf-8")
-            fname = md.stem.lower()
-            if any(key in fname for key in ["business_case", "impact", "solution", "proposal", "vendor"]):
-                check_tokens(text, PAS_TOKENS, md, errors)
+                continue
+            
+            # Check tokens against template rubric if available
+            text = f.read_text(encoding="utf-8")
+            templates = pack.get("templates", {})
+            
+            # Find matching template by searching all templates for matching file path
+            tmpl_data = None
+            for key, tmpl in templates.items():
+                if isinstance(tmpl, dict) and tmpl.get("file"):
+                    # Extract basename from template's file field to match against section name
+                    file_path_str = tmpl["file"]
+                    if file_path_str:
+                        template_stem = Path(file_path_str).stem
+                        if template_stem == sec:
+                            tmpl_data = tmpl
+                            break
+            
+            if tmpl_data and "rubric" in tmpl_data:
+                rubric = tmpl_data["rubric"]
+                if isinstance(rubric, dict) and "required_tokens" in rubric:
+                    required_tokens = rubric["required_tokens"]
+                    check_tokens(text, required_tokens, f, errors)
+                else:
+                    # No required_tokens in rubric, use filename heuristic as fallback
+                    fname = f.stem.lower()
+                    if any(key in fname for key in ["business_case", "impact", "solution", "proposal", "vendor"]):
+                        check_tokens(text, PAS_TOKENS, f, errors)
+                    else:
+                        check_tokens(text, SCQA_TOKENS, f, errors)
             else:
-                # default to SCQA for "about_*", "scope", "milestones", etc.
-                check_tokens(text, SCQA_TOKENS, md, errors)
+                # No rubric defined for this template, use filename heuristic
+                fname = f.stem.lower()
+                if any(key in fname for key in ["business_case", "impact", "solution", "proposal", "vendor"]):
+                    check_tokens(text, PAS_TOKENS, f, errors)
+                else:
+                    check_tokens(text, SCQA_TOKENS, f, errors)
 
         # Optional schema check against repo schema (non-fatal if not present)
         schema_path = Path("smartai-prompts-v2.schema.json")
