@@ -13,11 +13,14 @@ Instructions:
 - Emphasize alignment with productivity improvement and automation goals of PSG.
 - Use clear, outcome-oriented language that would be acceptable to EnterpriseSG evaluators.
 
-## Problem
-Identify the business challenges and requirements.
+## Situation
+Describe the current business context and operational requirements.
 
-## Agitate
-Highlight the urgency and importance of addressing these challenges.
+## Complication
+Explain the challenges, inefficiencies, and gaps in current processes.
 
-## Solve
-Present the proposed solution and its capabilities.
+## Question
+What are the key questions about the solution, its capabilities, and expected outcomes?
+
+## Answer
+Present the proposed solution and its capabilities, including deployment details and alignment with PSG goals.

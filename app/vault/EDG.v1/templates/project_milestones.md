@@ -21,9 +21,9 @@ Present the project milestone plan and timeline.
 
 Provide the milestone table as narrative bullets using only dates/durations from evidence:
 
-- **Phase** — Key Activity
-  **Start/End (mm/yyyy)** — Timeline from evidence
-  **Deliverables** — Outputs as stated
+**Phase** — Key Activity
+**Start/End (mm/yyyy)** — Timeline from evidence
+**Deliverables** — Outputs as stated
 
 Example (replace only if present):
 - Phase 1: Discovery — Jan 2025 to Feb 2025. Deliverable: Consultant Report. [source:project_plan]

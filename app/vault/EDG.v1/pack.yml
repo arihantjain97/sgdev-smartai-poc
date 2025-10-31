@@ -63,7 +63,7 @@ templates:
     retrieval_tags: ["edg","about_project","innovation_productivity","automation"]
     file: templates/about_project.i_and_p.automation.md
     rubric:
-      required_tokens: ["Current","Proposed","Improvements"]
+      required_tokens: ["Current State of Operations","Proposed Automation","Expected Productivity Improvements"]
     evidence_hints:
       priority_labels: ["audited_financials"]
       optional_labels: []
@@ -83,7 +83,7 @@ templates:
     retrieval_tags: ["edg","market_access","expansion_plan"]
     file: templates/expansion_plan.market_access.md
     rubric:
-      required_tokens: ["Target","Competitors","Advantage"]
+      required_tokens: ["Target Country/Market","Competitors","Competitive Advantage"]
     evidence_hints:
       priority_labels: ["audited_financials"]
       optional_labels: []
@@ -92,7 +92,7 @@ templates:
     retrieval_tags: ["edg","project_outcomes"]
     file: templates/project_outcomes.md
     rubric:
-      required_tokens: ["Capability","Outcomes"]
+      required_tokens: ["Capability Building","Quantitative Outcomes","Qualitative Outcomes"]
     evidence_hints:
       priority_labels: ["audited_financials"]
       optional_labels: []
@@ -101,7 +101,7 @@ templates:
     retrieval_tags: ["edg","project_milestones"]
     file: templates/project_milestones.md
     rubric:
-      required_tokens: ["Phase","Start","End","Deliverables"]
+      required_tokens: ["Phase","Deliverables"]
     evidence_hints:
       priority_labels: ["audited_financials"]
       optional_labels: []

@@ -13,11 +13,14 @@ Instructions:
 - Include qualitative benefits (e.g., improved service delivery, reduced manual errors).
 - Note that benefits must be realistic and traceable to uploaded evidence.
 
-## Problem
-Identify the current business challenges and inefficiencies.
+## Situation
+Describe the current productivity context and business operations.
 
-## Agitate
-Highlight the urgency and importance of addressing these issues.
+## Complication
+Explain the challenges, inefficiencies, and lost opportunities affecting productivity.
 
-## Solve
-Present the solution and its expected business impact.
+## Question
+What are the key questions about productivity improvements and expected business impact?
+
+## Answer
+Present the solution and its expected business impact, including quantitative and qualitative benefits.
