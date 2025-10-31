@@ -4,7 +4,7 @@ lint_packs.py
 Validates prompt packs. This patch adds backward-compat normalization so
 legacy packs using `pack_id` and `templates:` continue to work:
   - id ← pack_id
-  - sections ← templates.keys()
+  - sections ← derived from template file paths or keys
   - version inferred from directory name if missing (e.g., EDG.v1 → "1")
   - status defaults to "draft" if missing
 
@@ -47,7 +47,7 @@ def normalize_pack(pack: Dict[str, Any], file_path: str) -> Dict[str, Any]:
     """
     Back-compat shim:
       - Prefer `id`, but fall back to `pack_id`.
-      - Prefer explicit `sections`, else derive from `templates` keys if present.
+      - Prefer explicit `sections`, else derive from `templates` file paths or keys.
       - Fill `version` from folder if missing.
       - Default `status` to "draft" if missing.
     Does NOT change downstream validation logic; it only ensures required keys exist.
@@ -69,9 +69,13 @@ def normalize_pack(pack: Dict[str, Any], file_path: str) -> Dict[str, Any]:
             for key, tmpl_data in templates.items():
                 if isinstance(tmpl_data, dict) and "file" in tmpl_data:
                     # Extract basename from file path, e.g., "templates/about_company.md" -> "about_company"
-                    file_path = tmpl_data["file"]
-                    section_name = Path(file_path).stem  # removes .md extension
-                    sections.append(section_name)
+                    file_path_str = tmpl_data["file"]
+                    if file_path_str:  # Only proceed if file path is not empty
+                        section_name = Path(file_path_str).stem  # removes .md extension
+                        sections.append(section_name)
+                    else:
+                        # Empty file path: fallback to key name
+                        sections.append(key)
                 else:
                     # Fallback to key name
                     sections.append(key)
