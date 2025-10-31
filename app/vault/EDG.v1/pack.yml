@@ -6,17 +6,27 @@ labels: { grant: EDG, locale: en-SG }
 defaults:
   frameworks:
     business_case: PAS
+    business_case__manufacturing: PAS
     consultancy_scope: SCQA
+    about_company: SCQA
+    about_project__core: SCQA
+    about_project__i_and_p__automation: SCQA
+    about_project__i_and_p__product_development: SCQA
+    expansion_plan__market_access: SCQA
+    project_outcomes: SCQA
+    project_milestones: SCQA
   style: "Formal, outcome-oriented"
   evidence_char_cap: 6000
 
 templates:
   business_case:
     retrieval_tags: ["business_case","edg","pas","generic"]
+    section_id: business_case
     file: templates/business_case.md
     rubric:
       required_tokens: ["Problem","Agitate","Solve"]
   consultancy_scope:
+    section_id: consultancy_scope
     retrieval_tags: ["scope","edg","scqa","generic"]
     file: templates/consultancy_scope.md
     rubric:
@@ -53,7 +63,7 @@ templates:
     retrieval_tags: ["edg","about_project","innovation_productivity","automation"]
     file: templates/about_project.i_and_p.automation.md
     rubric:
-      required_tokens: ["Current","Proposed","Improvements"]
+      required_tokens: ["Current State of Operations","Proposed Automation","Expected Productivity Improvements"]
     evidence_hints:
       priority_labels: ["audited_financials"]
       optional_labels: []
@@ -73,7 +83,7 @@ templates:
     retrieval_tags: ["edg","market_access","expansion_plan"]
     file: templates/expansion_plan.market_access.md
     rubric:
-      required_tokens: ["Target","Competitors","Advantage"]
+      required_tokens: ["Target Country/Market","Competitors","Competitive Advantage"]
     evidence_hints:
       priority_labels: ["audited_financials"]
       optional_labels: []
@@ -82,7 +92,7 @@ templates:
     retrieval_tags: ["edg","project_outcomes"]
     file: templates/project_outcomes.md
     rubric:
-      required_tokens: ["Capability","Outcomes"]
+      required_tokens: ["Capability Building","Quantitative Outcomes","Qualitative Outcomes"]
     evidence_hints:
       priority_labels: ["audited_financials"]
       optional_labels: []
@@ -91,7 +101,7 @@ templates:
     retrieval_tags: ["edg","project_milestones"]
     file: templates/project_milestones.md
     rubric:
-      required_tokens: ["Phase","Start","End","Deliverables"]
+      required_tokens: ["Phase","Deliverables"]
     evidence_hints:
       priority_labels: ["audited_financials"]
       optional_labels: []

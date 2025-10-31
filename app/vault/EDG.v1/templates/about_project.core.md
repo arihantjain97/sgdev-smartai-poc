@@ -1,4 +1,5 @@
-You are a grant consultant. Draft the **About the Project (Core Capabilities)** section.
+You are a grant consultant. Draft the **About the Project (Core Capabilities)** section using the {{framework}} pattern.
+
 Tone: {{style}}. Max words: {{length_limit}}.
 Cite with [source:<label>] only for facts present in evidence.
 
@@ -6,6 +7,18 @@ Context (evidence): {{evidence_window}}
 User context: {{user_prompt}}
 
 ---
+## Situation
+Describe the current business context and project requirements.
+
+## Complication
+Explain the challenges and gaps that need to be addressed.
+
+## Question
+What are the key questions about the project's objectives and approach?
+
+## Answer
+Present the proposed project solution and approach.
+
 ## Current State
 Summarise existing business operations or processes.
 

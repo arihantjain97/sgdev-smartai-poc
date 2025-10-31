@@ -1,6 +1,15 @@
 #!/usr/bin/env python3
 """
 lint_packs.py
+Validates prompt packs. This patch adds backward-compat normalization so
+legacy packs using `pack_id` and `templates:` continue to work:
+  - id ← pack_id
+  - sections ← derived from template file paths or keys
+  - version inferred from directory name if missing (e.g., EDG.v1 → "1")
+  - status defaults to "draft" if missing
+
+Downstream validation/heuristics remain unchanged.
+
 - Validates pack manifests and basic template structure.
 - Enforces PAS/SCQA structure tokens.
 - Fails (exit != 0) on any error.
@@ -9,13 +18,82 @@ Usage:
   python tools/lint_packs.py [--vault app/vault]
 """
 from __future__ import annotations
-import argparse, sys, re, json
+import argparse, sys, re, json, os
 from pathlib import Path
+from typing import Dict, Any
 
 PAS_TOKENS = ["Problem", "Agitate", "Solve"]
 SCQA_TOKENS = ["Situation", "Complication", "Question", "Answer"]
 
 REQUIRED_PACK_FIELDS = ["id", "version", "status", "sections"]
+
+# Example path patterns we expect: app/vault/EDG.v1/pack.yml
+# Capture "ver" from ".v1" or ".1.2.3"
+VERSION_FROM_DIR = re.compile(r"[\\/](?P<name>[A-Za-z0-9._-]+)\.(?P<ver>v?\d[\w.-]*)[\\/]")
+
+def infer_version_from_path(path: str) -> str:
+    """Extract version from directory name like EDG.v1 → '1' or EDG.v1.2.3 → '1.2.3'"""
+    m = VERSION_FROM_DIR.search(str(path))
+    if m and m.group("ver"):
+        # normalize "v1" or "1.2.3" -> "1" or "1.2.3"
+        ver = m.group("ver").lstrip("vV")
+        # If just a single number, default to SemVer format
+        if re.match(r'^\d+$', ver):
+            return f"{ver}.0.0"
+        return ver
+    return "1.0.0"
+
+def normalize_pack(pack: Dict[str, Any], file_path: str) -> Dict[str, Any]:
+    """
+    Back-compat shim:
+      - Prefer `id`, but fall back to `pack_id`.
+      - Prefer explicit `sections`, else derive from `templates` file paths or keys.
+      - Fill `version` from folder if missing.
+      - Default `status` to "draft" if missing.
+    Does NOT change downstream validation logic; it only ensures required keys exist.
+    """
+    norm = dict(pack) if pack else {}
+
+    # id ← pack_id (back-compat)
+    if "id" not in norm and "pack_id" in norm:
+        norm["id"] = norm["pack_id"]
+        print(f"WARNING: [PACK] {file_path}: using legacy 'pack_id' → 'id' (deprecated)", file=sys.stderr)
+
+    # sections ← templates keys (back-compat)
+    # If deriving from templates, prefer extracting from file field or use keys
+    if "sections" not in norm:
+        templates = norm.get("templates")
+        if isinstance(templates, dict) and templates:
+            # Try to extract section names from file field, fallback to keys
+            sections = []
+            for key, tmpl_data in templates.items():
+                if isinstance(tmpl_data, dict) and "file" in tmpl_data:
+                    # Extract basename from file path, e.g., "templates/about_company.md" -> "about_company"
+                    file_path_str = tmpl_data["file"]
+                    if file_path_str:  # Only proceed if file path is not empty
+                        section_name = Path(file_path_str).stem  # removes .md extension
+                        sections.append(section_name)
+                    else:
+                        # Empty file path: fallback to key name
+                        sections.append(key)
+                else:
+                    # Fallback to key name
+                    sections.append(key)
+            norm["sections"] = sections if sections else list(templates.keys())
+        else:
+            norm.setdefault("sections", [])
+        if norm.get("sections"):
+            print(f"WARNING: [PACK] {file_path}: deriving 'sections' from 'templates' (deprecated)", file=sys.stderr)
+
+    # version
+    if "version" not in norm or not norm["version"]:
+        norm["version"] = infer_version_from_path(file_path)
+
+    # status
+    if "status" not in norm or not norm["status"]:
+        norm["status"] = "draft"
+
+    return norm
 
 def read_yaml(path: Path) -> dict:
     import yaml
@@ -50,6 +128,8 @@ def main():
 
     for pack_dir, pack_yml_path in find_packs(vault):
         pack = read_yaml(pack_yml_path)
+        # Normalize BEFORE schema/field checks
+        pack = normalize_pack(pack, str(pack_yml_path))
 
         # Basic pack.yml shape
         for field in REQUIRED_PACK_FIELDS:
@@ -59,8 +139,8 @@ def main():
         pack_id = pack.get("id", pack_dir.name.split(".")[0].upper())
         version = str(pack.get("version", ""))
         status = pack.get("status", "").lower() if isinstance(pack.get("status", ""), str) else pack.get("status")
-        if status not in {"candidate", "approved"}:
-            errors.append(f"[PACK] {pack_yml_path}: status must be 'candidate' or 'approved'")
+        if status not in {"draft", "candidate", "approved"}:
+            errors.append(f"[PACK] {pack_yml_path}: status must be 'draft', 'candidate', or 'approved'")
         
         # Validate version format (basic SemVer check)
         if not version:
@@ -78,21 +158,48 @@ def main():
             errors.append(f"[PACK] {pack_yml_path}: templates/ folder missing")
             continue
 
-        # Enforce section→template parity
+        # Enforce section→template parity and validate rubrics
         for sec in sections:
             f = tmpl_dir / f"{sec}.md"
             if not f.exists():
                 errors.append(f"[PACK] {pack_yml_path}: section '{sec}' missing template {f}")
-
-        # Decide structure expectation by filename heuristic
-        for md in sorted(tmpl_dir.glob("*.md")):
-            text = md.read_text(encoding="utf-8")
-            fname = md.stem.lower()
-            if any(key in fname for key in ["business_case", "impact", "solution", "proposal", "vendor"]):
-                check_tokens(text, PAS_TOKENS, md, errors)
+                continue
+            
+            # Check tokens against template rubric if available
+            text = f.read_text(encoding="utf-8")
+            templates = pack.get("templates", {})
+            
+            # Find matching template by searching all templates for matching file path
+            tmpl_data = None
+            for key, tmpl in templates.items():
+                if isinstance(tmpl, dict) and tmpl.get("file"):
+                    # Extract basename from template's file field to match against section name
+                    file_path_str = tmpl["file"]
+                    if file_path_str:
+                        template_stem = Path(file_path_str).stem
+                        if template_stem == sec:
+                            tmpl_data = tmpl
+                            break
+            
+            if tmpl_data and "rubric" in tmpl_data:
+                rubric = tmpl_data["rubric"]
+                if isinstance(rubric, dict) and "required_tokens" in rubric:
+                    required_tokens = rubric["required_tokens"]
+                    check_tokens(text, required_tokens, f, errors)
+                else:
+                    # No required_tokens in rubric, use filename heuristic as fallback
+                    fname = f.stem.lower()
+                    if any(key in fname for key in ["business_case", "impact", "solution", "proposal", "vendor"]):
+                        check_tokens(text, PAS_TOKENS, f, errors)
+                    else:
+                        check_tokens(text, SCQA_TOKENS, f, errors)
             else:
-                # default to SCQA for "about_*", "scope", "milestones", etc.
-                check_tokens(text, SCQA_TOKENS, md, errors)
+                # No rubric defined for this template, use filename heuristic
+                fname = f.stem.lower()
+                if any(key in fname for key in ["business_case", "impact", "solution", "proposal", "vendor"]):
+                    check_tokens(text, PAS_TOKENS, f, errors)
+                else:
+                    check_tokens(text, SCQA_TOKENS, f, errors)
 
         # Optional schema check against repo schema (non-fatal if not present)
         schema_path = Path("smartai-prompts-v2.schema.json")

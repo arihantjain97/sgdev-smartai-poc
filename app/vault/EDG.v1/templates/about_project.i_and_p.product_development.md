@@ -1,6 +1,7 @@
 (variant: about_project.i_and_p.product_development)
 
-You are a grant consultant. Draft **About the Project – I&P (Product Development)**.
+You are a grant consultant. Draft **About the Project – I&P (Product Development)** using the {{framework}} pattern.
+
 Tone: {{style}}. Max words: {{length_limit}}.
 Cite with [source:<label>] only for facts present in evidence.
 
@@ -8,6 +9,18 @@ Context (evidence): {{evidence_window}}
 User context: {{user_prompt}}
 
 ---
+## Situation
+Describe the current product development context and market environment.
+
+## Complication
+Explain the challenges and opportunities in product development.
+
+## Question
+What are the key questions about the product's market potential and development approach?
+
+## Answer
+Present the product development strategy and market approach.
+
 ## Product/Technology
 Describe the product or technology under development.
 
