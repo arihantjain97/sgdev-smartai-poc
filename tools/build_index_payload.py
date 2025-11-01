@@ -1,9 +1,15 @@
 #!/usr/bin/env python3
 """
 build_index_payload.py
-- Walks app/vault/*/pack.yml and templates/*.md
-- Emits a flattened JSON array for indexing/search with fields:
-  id, pack, version, status, section, path, body, labels, updated_at
+Purpose
+	•	Walks your repo under app/vault/**/pack.yml.
+	•	Validates + normalizes each pack.
+	•	Produces a single JSON array of documents ready for Azure Search, saved to a file (e.g., artifacts/index_docs.json).
+
+Why split it out
+	•	PR CI can run this safely (no admin keys).
+	•	You get a reviewable artifact (what would be indexed).
+	•	It’s deterministic input to the next step.
 
 Usage:
   python tools/build_index_payload.py --status candidate --out artifacts/index_docs.json [--packs "psg@1.0.0,edg@1.0.1"]
@@ -68,9 +74,21 @@ def main():
         version = str(version)
         status = str(pack.get("status")).lower()
         labels = pack.get("labels", {})
+        
+        # --- Back-compat: derive `sections` from `templates` if missing ---
         sections = pack.get("sections", [])
+        if not sections:
+            tmpl = pack.get("templates")
+            if isinstance(tmpl, dict) and tmpl:
+                sections = list(tmpl.keys())
+                print(f"WARNING: [PACK] {pack_yml}: deriving 'sections' from 'templates' (deprecated)", file=sys.stderr)
+        # -----------------------------------------------------------------
 
         if not should_include(pack_id, version, status, args.status, packs_filter):
+            continue
+
+        if not sections:
+            print(f"WARN: [PACK] {pack_yml}: no sections found (neither 'sections' nor 'templates'); skipping", file=sys.stderr)
             continue
 
         tmpl_dir = pack_dir / "templates"
