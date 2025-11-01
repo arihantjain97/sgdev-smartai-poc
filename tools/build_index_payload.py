@@ -103,7 +103,6 @@ def main():
             doc_id = f"{pack_id}:{version}:{section}:{args.status}"
             docs.append({
                 "id": doc_id,
-                "pack": pack_id,
                 "version": version,
                 "status": args.status,
                 "section": section,

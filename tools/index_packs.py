@@ -20,7 +20,7 @@ Usage:
   python tools/index_packs.py --in artifacts/index_docs.json [--batch 1000]
 """
 from __future__ import annotations
-import argparse, json, os, sys, time, urllib.request, urllib.error
+import argparse, json, os, sys, time, urllib.request, urllib.error, urllib.parse
 
 def post_json(url: str, payload: dict, headers: dict):
     data = json.dumps(payload).encode("utf-8")
@@ -45,6 +45,21 @@ def chunked(iterable, n):
             buf = []
     if buf: yield buf
 
+def fetch_index_schema(endpoint: str, index: str, key: str) -> set[str]:
+    url = f"{endpoint}/indexes/{urllib.parse.quote(index)}?api-version=2024-07-01"
+    req = urllib.request.Request(url, headers={"api-key": key})
+    try:
+        with urllib.request.urlopen(req) as resp:
+            meta = json.loads(resp.read().decode("utf-8"))
+        fields = meta.get("fields", [])
+        allowed = {f["name"] for f in fields if isinstance(f, dict) and "name" in f}
+        return allowed
+    except urllib.error.HTTPError as e:
+        body = e.read().decode("utf-8", errors="ignore")
+        print(f"ERR: Failed to fetch index schema: HTTP {e.code}", file=sys.stderr)
+        print("Body:", body[:500], file=sys.stderr)
+        raise
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--in", dest="infile", required=True)
@@ -60,6 +75,25 @@ def main():
         return 2
 
     docs = json.loads(open(args.infile, "r", encoding="utf-8").read())
+    
+    # Schema preflight check
+    allowed = fetch_index_schema(endpoint, index, key)
+    strict = True
+    unknown_keys = set()
+    for d in docs:
+        unknown_keys |= (set(d.keys()) - allowed - {"@search.action"})  # exclude action key
+    if unknown_keys:
+        msg = f"Unknown fields not in index schema: {sorted(unknown_keys)}"
+        if strict:
+            print("ERR:", msg, file=sys.stderr)
+            return 2
+        else:
+            print("WARN:", msg, file=sys.stderr)
+            for d in docs:
+                for k in list(d.keys()):
+                    if k in unknown_keys:
+                        del d[k]
+    
     url = f"{endpoint}/indexes/{index}/docs/index?api-version=2024-07-01"
     headers = {
         "Content-Type": "application/json",
