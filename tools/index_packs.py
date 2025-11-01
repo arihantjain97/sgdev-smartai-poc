@@ -4,6 +4,13 @@ index_packs.py
 - Upserts docs into Azure AI Search using REST API.
 - Reads a JSON array (from build_index_payload.py).
 
+	•	Read the JSON produced by build_index_payload.py.
+	•	Upsert those documents to Azure Cognitive Search.
+
+Why separate?
+	•	Needs admin key; you don’t want this in PR CI.
+	•	Keeps the “mutating the world” step inside a gated Promote workflow.
+
 Env:
   AZURE_SEARCH_ENDPOINT (e.g., https://<name>.search.windows.net)
   AZURE_SEARCH_INDEX    (e.g., smartai-prompts-v2)
