@@ -20,13 +20,21 @@ Usage:
   python tools/index_packs.py --in artifacts/index_docs.json [--batch 1000]
 """
 from __future__ import annotations
-import argparse, json, os, sys, time, urllib.request
+import argparse, json, os, sys, time, urllib.request, urllib.error
 
 def post_json(url: str, payload: dict, headers: dict):
     data = json.dumps(payload).encode("utf-8")
     req = urllib.request.Request(url, data=data, headers=headers, method="POST")
-    with urllib.request.urlopen(req) as resp:
-        return resp.read().decode("utf-8")
+    try:
+        with urllib.request.urlopen(req) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        body = e.read().decode("utf-8", errors="ignore")
+        print(f"\n=== Azure Search HTTPError {e.code} ===", file=sys.stderr)
+        print(f"URL: {req.full_url}", file=sys.stderr)
+        print("Response headers:", e.headers, file=sys.stderr)
+        print("Body:", body[:2000], file=sys.stderr)  # print the first ~2KB
+        raise
 
 def chunked(iterable, n):
     buf = []
@@ -52,7 +60,7 @@ def main():
         return 2
 
     docs = json.loads(open(args.infile, "r", encoding="utf-8").read())
-    url = f"{endpoint}/indexes/{index}/docs/index?api-version=2023-11-01"
+    url = f"{endpoint}/indexes/{index}/docs/index?api-version=2024-07-01"
     headers = {
         "Content-Type": "application/json",
         "api-key": key
