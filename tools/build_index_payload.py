@@ -33,6 +33,11 @@ def discover_packs(vault_root: Path):
 def normalize_pack_id(name: str) -> str:
     return name.split(".")[0].upper()
 
+def make_safe_doc_id(pack_id: str, version: str, section: str, status: str) -> str:
+    # Azure Search key rules: letters, digits, underscore (_), dash (-), equal sign (=)
+    safe_version = str(version).replace(".", "_")
+    return f"{pack_id}={safe_version}={section}={status}"
+
 def should_include(pack_id: str, version: str, status: str, cli_status: str, packs_filter: set[str] | None):
     if cli_status and status != cli_status:
         return False
@@ -92,6 +97,7 @@ def main():
             continue
 
         tmpl_dir = pack_dir / "templates"
+        templates_cfg = pack.get("templates", {})
         for section in sections:
             md_path = tmpl_dir / f"{section}.md"
             if not md_path.exists():
@@ -100,16 +106,29 @@ def main():
             else:
                 body = md_path.read_text(encoding="utf-8")
 
-            doc_id = f"{pack_id}:{version}:{section}:{args.status}"
-            docs.append({
-                "id": doc_id,
-                "version": version,
-                "status": args.status,
-                "section": section,
+            doc_id = make_safe_doc_id(pack_id, version, section, args.status)
+            tmpl_cfg = templates_cfg.get(section, {}) if isinstance(templates_cfg, dict) else {}
+            retrieval_tags = tmpl_cfg.get("retrieval_tags", []) or []
+
+            metadata = {
                 "path": str(md_path),
                 "labels": labels,
-                "body": body,
                 "updated_at": now,
+                "pack_id": pack_id,
+                "version": version,
+                "section_id": section,
+                "template_key": section,
+            }
+
+            docs.append({
+                "id": doc_id,
+                "pack_id": pack_id,
+                "version": version,
+                "status": args.status,
+                "section_id": section,
+                "retrieval_tags": retrieval_tags,
+                "template_text": body,
+                "metadata_json": json.dumps(metadata, ensure_ascii=False),
             })
 
     with out_path.open("w", encoding="utf-8") as f:

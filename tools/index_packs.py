@@ -62,13 +62,31 @@ def fetch_index_schema(endpoint: str, index: str, key: str) -> set[str]:
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--in", dest="infile", required=True)
+    ap.add_argument("--in", dest="infile", help="JSON file of docs to index")
     ap.add_argument("--batch", type=int, default=500)
+    ap.add_argument("--print-schema", action="store_true", help="Print Azure Search index schema and exit")
     args = ap.parse_args()
 
     endpoint = os.environ.get("AZURE_SEARCH_ENDPOINT", "").rstrip("/")
     index = os.environ.get("AZURE_SEARCH_INDEX", "")
     key = os.environ.get("AZURE_SEARCH_ADMIN_KEY", "")
+
+    if args.print_schema:
+        url = f"{endpoint}/indexes/{index}?api-version=2024-07-01"
+        headers = {"api-key": key}
+        req = urllib.request.Request(url, headers=headers, method="GET")
+        try:
+            with urllib.request.urlopen(req) as resp:
+                schema = json.loads(resp.read().decode("utf-8"))
+                print(json.dumps(schema.get("fields", []), indent=2))
+                return 0
+        except Exception as e:
+            print("ERR: Failed to fetch schema:", e)
+            return 2
+
+    if not args.infile:
+        print("ERR: --in is required unless using --print-schema", file=sys.stderr)
+        return 2
 
     if not (endpoint and index and key):
         print("ERR: set AZURE_SEARCH_ENDPOINT, AZURE_SEARCH_INDEX, AZURE_SEARCH_ADMIN_KEY", file=sys.stderr)
@@ -78,21 +96,11 @@ def main():
     
     # Schema preflight check
     allowed = fetch_index_schema(endpoint, index, key)
-    strict = True
-    unknown_keys = set()
-    for d in docs:
-        unknown_keys |= (set(d.keys()) - allowed - {"@search.action"})  # exclude action key
-    if unknown_keys:
-        msg = f"Unknown fields not in index schema: {sorted(unknown_keys)}"
-        if strict:
-            print("ERR:", msg, file=sys.stderr)
-            return 2
-        else:
-            print("WARN:", msg, file=sys.stderr)
-            for d in docs:
-                for k in list(d.keys()):
-                    if k in unknown_keys:
-                        del d[k]
+    allowed_with_action = set(allowed) | {"@search.action"}
+    doc_keys = set().union(*[set(d.keys()) for d in docs]) if docs else set()
+    unknown = sorted(doc_keys - allowed_with_action)
+    if unknown:
+        print(f"WARN: unknown fields not in schema: {unknown}", file=sys.stderr)
     
     url = f"{endpoint}/indexes/{index}/docs/index?api-version=2024-07-01"
     headers = {

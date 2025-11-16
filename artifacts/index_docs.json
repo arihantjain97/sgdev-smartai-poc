@@ -1,0 +1,76 @@
+[
+  {
+    "id": "PSG=1_0_1=solution_description=approved",
+    "pack_id": "PSG",
+    "version": "1.0.1",
+    "status": "approved",
+    "section_id": "solution_description",
+    "retrieval_tags": [
+      "psg",
+      "solution",
+      "description",
+      "scqa"
+    ],
+    "template_text": "You are a grant consultant. Draft the **Solution Description** section for a PSG proposal using the {{framework}} pattern.\n\nTone: {{style}}. Max words: {{length_limit}}.\nCite facts directly from evidence with [source:<label>].\n\nContext (evidence): {{evidence_window}}\nUser context: {{user_prompt}}\n\nInstructions:\n- Summarize the IT solution, equipment, or consultancy service being applied for.\n- Describe its purpose, core features, and how it automates or improves business processes.\n- Mention deployment details (e.g., location, equipment specs, vendor name) if available in evidence.\n- Emphasize alignment with productivity improvement and automation goals of PSG.\n- Use clear, outcome-oriented language that would be acceptable to EnterpriseSG evaluators.\n\n## Situation\nDescribe the current business context and operational requirements.\n\n## Complication\nExplain the challenges, inefficiencies, and gaps in current processes.\n\n## Question\nWhat are the key questions about the solution, its capabilities, and expected outcomes?\n\n## Answer\nPresent the proposed solution and its capabilities, including deployment details and alignment with PSG goals.",
+    "metadata_json": "{\"path\": \"app/vault/PSG.v1/templates/solution_description.md\", \"labels\": {\"grant\": \"PSG\", \"locale\": \"en-SG\"}, \"updated_at\": \"2025-11-16T10:50:54.099736+00:00\", \"pack_id\": \"PSG\", \"version\": \"1.0.1\", \"section_id\": \"solution_description\", \"template_key\": \"solution_description\"}"
+  },
+  {
+    "id": "PSG=1_0_1=vendor_quotation=approved",
+    "pack_id": "PSG",
+    "version": "1.0.1",
+    "status": "approved",
+    "section_id": "vendor_quotation",
+    "retrieval_tags": [
+      "psg",
+      "vendor",
+      "quotation",
+      "pas"
+    ],
+    "template_text": "You are a grant consultant. Draft the **Vendor Quotation Summary** section using the {{framework}} pattern.\n\nTone: {{style}}. Max words: {{length_limit}}.\nAll numbers must be grounded in the quotation evidence.\nCite numbers with [source:vendor_quotation].\n\nContext (evidence): {{evidence_window}}\nUser context: {{user_prompt}}\n\nInstructions:\n- Summarize the vendor's official quotation exactly as provided.\n- Highlight vendor name, quotation reference, and date if available.\n- List key items/services with line-item descriptions.\n- Report costs and man-day rates as per the quotation. Do not invent or round numbers.\n- Flag if the quotation does not appear to match a pre-approved vendor solution.\n\n## Problem\nIdentify the procurement challenges and requirements.\n\n## Agitate\nHighlight the importance of proper vendor selection and cost validation.\n\n## Solve\nPresent the vendor quotation details and solution.",
+    "metadata_json": "{\"path\": \"app/vault/PSG.v1/templates/vendor_quotation.md\", \"labels\": {\"grant\": \"PSG\", \"locale\": \"en-SG\"}, \"updated_at\": \"2025-11-16T10:50:54.099736+00:00\", \"pack_id\": \"PSG\", \"version\": \"1.0.1\", \"section_id\": \"vendor_quotation\", \"template_key\": \"vendor_quotation\"}"
+  },
+  {
+    "id": "PSG=1_0_1=cost_breakdown=approved",
+    "pack_id": "PSG",
+    "version": "1.0.1",
+    "status": "approved",
+    "section_id": "cost_breakdown",
+    "retrieval_tags": [
+      "psg",
+      "cost",
+      "breakdown",
+      "pas"
+    ],
+    "template_text": "You are a grant consultant. Draft the **Cost Breakdown** section using the {{framework}} pattern.\n\nTone: {{style}}. Max words: {{length_limit}}.\nAll costs must come from the uploaded evidence.\nCite with [source:cost_breakdown].\n\nContext (evidence): {{evidence_window}}\nUser context: {{user_prompt}}\n\nInstructions:\n- Present costs grouped by category (e.g., software license, equipment, consultancy fees).\n- Clearly separate eligible vs non-eligible costs if visible in evidence.\n- Provide totals and sub-totals with [source:cost_breakdown].\n- Emphasize compliance with PSG rules (e.g., quotation matches Annex 3 of pre-approved package).\n- Mention that retrospective payments are not allowed if relevant.\n\n## Problem\nIdentify the cost challenges and financial requirements for the solution.\n\n## Agitate\nHighlight the urgency of cost control, compliance requirements, and budget constraints.\n\n## Solve\nPresent the detailed cost breakdown, compliance with PSG rules, and financial solution.",
+    "metadata_json": "{\"path\": \"app/vault/PSG.v1/templates/cost_breakdown.md\", \"labels\": {\"grant\": \"PSG\", \"locale\": \"en-SG\"}, \"updated_at\": \"2025-11-16T10:50:54.099736+00:00\", \"pack_id\": \"PSG\", \"version\": \"1.0.1\", \"section_id\": \"cost_breakdown\", \"template_key\": \"cost_breakdown\"}"
+  },
+  {
+    "id": "PSG=1_0_1=business_impact=approved",
+    "pack_id": "PSG",
+    "version": "1.0.1",
+    "status": "approved",
+    "section_id": "business_impact",
+    "retrieval_tags": [
+      "psg",
+      "impact",
+      "productivity",
+      "scqa"
+    ],
+    "template_text": "You are a grant consultant. Draft the **Business Impact** document for a PSG application using the {{framework}} pattern.\n\nTone: {{style}}. Max words: {{length_limit}}.\nCite facts with [source:<label>] — e.g., vendor_quotation, cost_breakdown, business_impact_report.\n\nContext (evidence): {{evidence_window}}\nUser context: {{user_prompt}}\n\nInstructions:\n- Explain how the solution will improve productivity, efficiency, or reduce costs.\n- Mention quantitative benefits (e.g., % time saved, revenue uplift) if evidence provides figures.\n- Highlight alignment with PSG objectives: automation, productivity gains, digital transformation.\n- Include qualitative benefits (e.g., improved service delivery, reduced manual errors).\n- Note that benefits must be realistic and traceable to uploaded evidence.\n\n## Situation\nDescribe the current productivity context and business operations.\n\n## Complication\nExplain the challenges, inefficiencies, and lost opportunities affecting productivity.\n\n## Question\nWhat are the key questions about productivity improvements and expected business impact?\n\n## Answer\nPresent the solution and its expected business impact, including quantitative and qualitative benefits.",
+    "metadata_json": "{\"path\": \"app/vault/PSG.v1/templates/business_impact.md\", \"labels\": {\"grant\": \"PSG\", \"locale\": \"en-SG\"}, \"updated_at\": \"2025-11-16T10:50:54.099736+00:00\", \"pack_id\": \"PSG\", \"version\": \"1.0.1\", \"section_id\": \"business_impact\", \"template_key\": \"business_impact\"}"
+  },
+  {
+    "id": "PSG=1_0_1=compliance_summary=approved",
+    "pack_id": "PSG",
+    "version": "1.0.1",
+    "status": "approved",
+    "section_id": "compliance_summary",
+    "retrieval_tags": [
+      "psg",
+      "compliance",
+      "summary"
+    ],
+    "template_text": "You are a grant consultant. Draft the **Compliance Summary** for a PSG application using the {{framework}} pattern.\n\nTone: {{style}}. Max words: {{length_limit}}.\nCite with [source:<label>] where applicable.\n\nContext (evidence): {{evidence_window}}\nUser context: {{user_prompt}}\n\n---\nSummarise the compliance signals visible in the uploaded materials:\n\n# Required Sections\n## Annex\nState whether line items and unit prices appear to match the pre-approved package. If mismatches appear, note them factually. {{#labels.vendor_quote}}Prefer [source:{{labels.vendor_quote}}].{{/labels.vendor_quote}}{{#labels.annex3_package}} and [source:{{labels.annex3_package}}]{{/labels.annex3_package}}.\n\n## Deployment\nDescribe deployment location evidence and whether the materials indicate usage in Singapore. {{#labels.deployment_proof}}Prefer [source:{{labels.deployment_proof}}].{{/labels.deployment_proof}}\n\n## Payment\nIf evidence indicates pre-payment before application, state that risk; otherwise remain silent.\n\n## Cost\nBriefly cross-reference quotation and cost schedule for totals and any non-eligible items. {{#labels.costs}}Prefer [source:{{labels.costs}}].{{/labels.costs}}\n\n# Brief \nCreate a brief summary in Annex, Deployment, Payment and Cost sections above.\n\n**Situation** - Summarise the current compliance requirements and context in Annex, Deployment, Payment and Cost sections above.\n\n**Complication** - Summarise the challenges in meeting compliance requirements in in Annex, Deployment, Payment and Cost sections above.\n\n**Question** - What are the key compliance considerations and requirements in Annex, Deployment, Payment and Cost sections above?\n\n**Answer** - Present the compliance status and evidence in Annex, Deployment, Payment and Cost sections above.\n\nKeep neutral; do not infer beyond the provided documents.\n",
+    "metadata_json": "{\"path\": \"app/vault/PSG.v1/templates/compliance_summary.md\", \"labels\": {\"grant\": \"PSG\", \"locale\": \"en-SG\"}, \"updated_at\": \"2025-11-16T10:50:54.099736+00:00\", \"pack_id\": \"PSG\", \"version\": \"1.0.1\", \"section_id\": \"compliance_summary\", \"template_key\": \"compliance_summary\"}"
+  }
+]
