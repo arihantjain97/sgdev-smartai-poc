@@ -1,0 +1,36 @@
+name: API Rollback
+
+on:
+  workflow_dispatch:
+    inputs:
+      bundle_url:
+        description: "Public URL or GitHub artifact URL of api_bundle.zip"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  rollback:
+    runs-on: ubuntu-latest
+    environment: dev
+    steps:
+      - name: Download bundle
+        run: |
+          curl -L "${{ github.event.inputs.bundle_url }}" -o api_bundle.zip
+          echo "Downloaded bundle:"
+          ls -lh api_bundle.zip
+
+      - name: Deploy old bundle to Azure (Rollback)
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: sgdev-smartai-api-01
+          publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
+          package: api_bundle.zip
+
+      - name: Smoke test
+        run: |
+          APP_URL="https://sgdev-smartai-api-01.azurewebsites.net"
+          curl -fsSL "${APP_URL}/health"
+          curl -fsSL "${APP_URL}/v1/debug/whereami"

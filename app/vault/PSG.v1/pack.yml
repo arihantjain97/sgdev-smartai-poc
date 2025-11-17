@@ -1,5 +1,5 @@
 pack_id: psg
-version: 1.0.1
+version: 1.0.3
 status: approved     # draft | candidate | approved
 labels:
   grant: PSG
