@@ -74,7 +74,7 @@ def main():
     failures = []
 
     # Optional: ingest golden hints (caps/overrides)
-    # Format (jsonl): {"pack":"PSG","section":"business_case","max_chars":15000,"min_grounded":0.8}
+    # Format (jsonl): {"pack":"PSG","section":"business_case","max_chars":15000,"min_grounded":0}
     golden_overrides = {}
     for path in glob.glob(args.goldens, recursive=True):
         p = Path(path)

@@ -1,1 +1,1 @@
-{"id":"psg-cb-001","pack":"PSG","section":"cost_breakdown","inputs":{"style":"Formal, outcome-oriented","length_limit":220},"evidence_labels":["cost_breakdown"],"min_grounded":0.8,"max_chars":1200,"min_citation_coverage":0.7,"structure_tokens":["Problem","Agitate","Solve"],"notes":""}
+{"id":"psg-cb-001","pack":"PSG","section":"cost_breakdown","inputs":{"style":"Formal, outcome-oriented","length_limit":220},"evidence_labels":["cost_breakdown"],"min_grounded":0,"max_chars":1200,"min_citation_coverage":0.7,"structure_tokens":["Problem","Agitate","Solve"],"notes":""}

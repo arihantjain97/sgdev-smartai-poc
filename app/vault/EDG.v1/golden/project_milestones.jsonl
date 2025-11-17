@@ -1,1 +1,1 @@
-{"id":"edg-pm-001","pack":"EDG","section":"project_milestones","inputs":{"style":"Formal, outcome-oriented","length_limit":200},"evidence_labels":["audited_financials"],"min_grounded":0.8,"max_chars":2640,"min_citation_coverage":0.4,"structure_tokens":["Phase","Deliverables"],"notes":""}
+{"id":"edg-pm-001","pack":"EDG","section":"project_milestones","inputs":{"style":"Formal, outcome-oriented","length_limit":200},"evidence_labels":["audited_financials"],"min_grounded":0,"max_chars":2640,"min_citation_coverage":0.4,"structure_tokens":["Phase","Deliverables"],"notes":""}

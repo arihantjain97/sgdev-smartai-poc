@@ -1,0 +1,2 @@
+{"id":"edg-cs-001","pack":"EDG","section":"consultancy_scope","inputs":{"style":"Formal, outcome-oriented","length_limit":220},"evidence_labels":["acra_bizfile","audited_financials"],"min_grounded":0,"max_chars":6000,"min_citation_coverage":0.6,"structure_tokens":["Situation","Complication","Question","Answer"],"notes":""}
+
