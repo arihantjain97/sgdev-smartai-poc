@@ -1,1 +1,1 @@
-{"id":"edg-gs-1","inputs":{"style":"Formal, outcome-oriented","length_limit":300},"evidence_labels":["acra_bizfile","audited_financials"],"assert":{"groundedness_min":0.8,"length_max_words":320}}
+{"id":"edg-gs-1","pack":"EDG","section":"business_case","inputs":{"style":"Formal, outcome-oriented","length_limit":300},"evidence_labels":["acra_bizfile","audited_financials"],"min_grounded":0.8,"max_chars":3840,"min_citation_coverage":0.6,"structure_tokens":["Problem","Agitate","Solve"],"notes":""}

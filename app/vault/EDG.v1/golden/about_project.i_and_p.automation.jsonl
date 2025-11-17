@@ -1,1 +1,1 @@
-{"id":"edg-apia-001","inputs":{"style":"Formal, outcome-oriented","length_limit":260},"evidence_labels":["audited_financials"],"assert":{"groundedness_min":0.80,"length_max_words":280,"citation_coverage_min":0.50}}
+{"id":"edg-apia-001","pack":"EDG","section":"about_project","inputs":{"style":"Formal, outcome-oriented","length_limit":260},"evidence_labels":["audited_financials"],"min_grounded":0.8,"max_chars":3360,"min_citation_coverage":0.5,"structure_tokens":["Current","Challenges","Proposed"],"notes":""}

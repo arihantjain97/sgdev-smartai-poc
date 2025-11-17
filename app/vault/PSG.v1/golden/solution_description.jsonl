@@ -1,1 +1,1 @@
-{"id":"psg-sd-001","inputs":{"style":"Formal, outcome-oriented","length_limit":220},"evidence_labels":["vendor_quotation"],"assert":{"groundedness_min":0.80,"length_max_words":240,"citation_coverage_min":0.50}}
+{"id":"psg-sd-001","pack":"PSG","section":"solution_description","inputs":{"style":"Formal, outcome-oriented","length_limit":220},"evidence_labels":["vendor_quotation"],"min_grounded":0.8,"max_chars":2880,"min_citation_coverage":0.5,"structure_tokens":["Situation","Complication","Question","Answer"],"notes":""}

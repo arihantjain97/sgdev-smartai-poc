@@ -1,1 +1,1 @@
-{"id":"edg-ac-001","inputs":{"style":"Formal, outcome-oriented","length_limit":220},"evidence_labels":["acra_bizfile","audited_financials"],"assert":{"groundedness_min":0.80,"length_max_words":240,"citation_coverage_min":0.60}}
+{"id":"edg-ac-001","pack":"EDG","section":"about_company","inputs":{"style":"Formal, outcome-oriented","length_limit":220},"evidence_labels":["acra_bizfile","audited_financials"],"min_grounded":0.8,"max_chars":2880,"min_citation_coverage":0.6,"structure_tokens":["Year","Key"],"notes":""}
