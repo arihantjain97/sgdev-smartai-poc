@@ -26,18 +26,27 @@ def read_yaml(path: Path) -> dict:
         return yaml.safe_load(f)
 
 def discover_templates(vault_root: Path):
+    """Discover all templates from pack.yml files.
+    
+    Iterates over pack["templates"] dict, yielding (pack_id, version, section, md_path)
+    for each template. Uses section_id from template config if present, otherwise
+    uses the template key name as the section.
+    """
     for pack_dir in sorted(vault_root.glob("*.*")):
         pack_yml = pack_dir / "pack.yml"
         if not pack_yml.exists():
             continue
         pack = read_yaml(pack_yml)
-        pack_id = str(pack.get("id") or pack_dir.name.split(".")[0].upper()).upper()
+        pack_id = str(pack.get("id") or pack.get("pack_id") or pack_dir.name.split(".")[0].upper()).upper()
         version = str(pack.get("version"))
-        sections = pack.get("sections", [])
-        tmpl_dir = pack_dir / "templates"
-        for sec in sections:
-            p = tmpl_dir / f"{sec}.md"
-            yield pack_id, version, sec, p
+        templates = pack.get("templates", {}) or {}
+        for tmpl_name, cfg in templates.items():
+            file_rel = cfg.get("file")
+            if not file_rel:
+                continue
+            md_path = pack_dir / file_rel
+            section = cfg.get("section_id") or tmpl_name
+            yield pack_id, version, section, md_path
 
 def groundedness_proxy(md_text: str) -> float:
     lines = [ln.strip() for ln in md_text.splitlines()]
@@ -65,7 +74,7 @@ def main():
     failures = []
 
     # Optional: ingest golden hints (caps/overrides)
-    # Format (jsonl): {"pack":"PSG","section":"business_case","max_chars":15000,"min_grounded":0.8}
+    # Format (jsonl): {"pack":"PSG","section":"business_case","max_chars":15000,"min_grounded":0}
     golden_overrides = {}
     for path in glob.glob(args.goldens, recursive=True):
         p = Path(path)
@@ -127,6 +136,17 @@ def main():
     out.write_text(json.dumps(report, indent=2), encoding="utf-8")
     print(f"offline_eval: wrote {out} with {len(failures)} failure(s).")
     return 1 if failures else 0
+
+# Quick local sanity checks (run from repo root):
+#   python tools/offline_eval.py --vault app/vault --out /tmp/eval_report.json
+# Then open /tmp/eval_report.json and confirm:
+#   - "results" contains entries for PSG.v1 and EDG.v1 templates.
+#   - "failures" is empty on a clean main.
+#
+# To see a failure, temporarily remove all "[source:" substrings from
+# app/vault/PSG.v1/templates/cost_breakdown.md and rerun:
+#   python tools/offline_eval.py --vault app/vault --out /tmp/eval_report.json
+# You should now see at least one failure where groundedness_proxy < min_grounded.
 
 if __name__ == "__main__":
     sys.exit(main())

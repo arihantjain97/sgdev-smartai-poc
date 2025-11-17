@@ -1,1 +1,1 @@
-{"id":"edg-epma-001","inputs":{"style":"Formal, outcome-oriented","length_limit":240},"evidence_labels":["audited_financials"],"assert":{"groundedness_min":0.80,"length_max_words":260,"citation_coverage_min":0.50}}
+{"id":"edg-epma-001","pack":"EDG","section":"expansion_plan","inputs":{"style":"Formal, outcome-oriented","length_limit":240},"evidence_labels":["audited_financials"],"min_grounded":0,"max_chars":3120,"min_citation_coverage":0.5,"structure_tokens":["Target Country/Market","Competitors","Competitive Advantage"],"notes":""}

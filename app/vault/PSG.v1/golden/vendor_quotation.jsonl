@@ -1,1 +1,1 @@
-{"id":"psg-vq-001","inputs":{"style":"Formal, outcome-oriented","length_limit":220},"evidence_labels":["vendor_quotation"],"assert":{"groundedness_min":0.85,"length_max_words":240,"citation_coverage_min":0.70}}
+{"id":"psg-vq-001","pack":"PSG","section":"vendor_quotation","inputs":{"style":"Formal, outcome-oriented","length_limit":220},"evidence_labels":["vendor_quotation"],"min_grounded":0,"max_chars":2880,"min_citation_coverage":0.7,"structure_tokens":["Problem","Agitate","Solve"],"notes":""}
