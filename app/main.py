@@ -38,6 +38,18 @@ def root():
 def health():
     return {"ok": True}
 
+@app.get("/v1/debug/rollback_probe")
+def rollback_probe():
+    """
+    Rollback drill probe endpoint.
+    Change/remove this between deployments to verify rollback behaviour.
+    """
+    return {
+        "ok": True,
+        "marker": "rollback-drill-v2",
+        "service": "smartai-api",
+    }
+
 @app.get("/v1/config/features")
 def features():
     return {
