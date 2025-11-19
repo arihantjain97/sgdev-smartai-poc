@@ -2444,7 +2444,7 @@ File: app/vault/PSG.v1/pack.yml
 [pack.yml: start]
 pack_id: PSG
 version: 1.0.1
-status: approved     # draft | candidate | approved
+status: candidate     # draft | candidate | approved
 labels:
   grant: PSG
   locale: en-SG
