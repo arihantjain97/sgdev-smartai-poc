@@ -43,7 +43,7 @@ def should_include(pack_id: str, version: str, status: str, cli_status: str, pac
         return False
     if packs_filter is None:
         return True
-    key = f"{pack_id.lower()}@{version}"
+    key = f"{pack_id}@{version}"
     return key in packs_filter
 
 def main():
@@ -64,7 +64,7 @@ def main():
 
     packs_filter = None
     if args.packs:
-        packs_filter = {x.strip().lower() for x in args.packs.split(",") if x.strip()}
+        packs_filter = {x.strip().upper() for x in args.packs.split(",") if x.strip()}
 
     docs = []
     now = datetime.now(timezone.utc).isoformat()
