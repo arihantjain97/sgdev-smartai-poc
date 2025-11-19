@@ -3,8 +3,8 @@ name: API Rollback
 on:
   workflow_dispatch:
     inputs:
-      bundle_url:
-        description: "Public URL or GitHub artifact URL of api_bundle.zip"
+      ref:
+        description: "Git ref to rollback to (commit SHA, tag, or branch)"
         required: true
         type: string
 
@@ -15,22 +15,47 @@ jobs:
   rollback:
     runs-on: ubuntu-latest
     environment: dev
+
     steps:
-      - name: Download bundle
+      - name: Checkout target ref
+        uses: actions/checkout@v4
+        with:
+          # This is the *old* commit / tag you want to roll back to
+          ref: ${{ inputs.ref }}
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Build rollback bundle (same as api-runfromzip)
         run: |
-          curl -L "${{ github.event.inputs.bundle_url }}" -o api_bundle.zip
-          echo "Downloaded bundle:"
+          rm -rf package && mkdir -p package
+          docker run --rm -v "$PWD":/work quay.io/pypa/manylinux2014_x86_64 \
+            /opt/python/cp310-cp310/bin/pip install \
+              --upgrade pip \
+              --only-binary=:all: \
+              -r /work/requirements.txt \
+              -t /work/package
+          rsync -a app/ package/app/
+          cp startup.sh package/
+          chmod +x package/startup.sh
+          cd package
+          zip -r ../api_bundle.zip .
+          cd -
+          echo "Rollback bundle size:"
           ls -lh api_bundle.zip
 
-      - name: Deploy old bundle to Azure (Rollback)
+      - name: Deploy rollback bundle to Azure Web App
         uses: azure/webapps-deploy@v3
         with:
           app-name: sgdev-smartai-api-01
           publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
           package: api_bundle.zip
 
-      - name: Smoke test
+      - name: Smoke test rolled-back API
         run: |
+          set -e
           APP_URL="https://sgdev-smartai-api-01.azurewebsites.net"
           curl -fsSL "${APP_URL}/health"
           curl -fsSL "${APP_URL}/v1/debug/whereami"
