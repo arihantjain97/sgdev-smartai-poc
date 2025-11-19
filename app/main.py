@@ -414,7 +414,12 @@ def debug_packs(pack: str = Query("psg"), ver: str = Query("latest-approved")):
     client = SearchClient(endpoint, index_name, AzureKeyCredential(query_key))
 
     # Resolve latest-approved → concrete version using the same helper as the vault
-    resolved_pack, resolved_ver = _pv_resolve(pack) if ver == "latest-approved" else (pack, ver)
+    # Also canonicalize pack IDs to uppercase for explicit versions
+    if ver == "latest-approved":
+        resolved_pack, resolved_ver = _pv_resolve(pack)
+    else:
+        resolved_pack = pack.strip().upper()
+        resolved_ver = ver.strip()
 
     flt = f"pack_id eq '{resolved_pack}' and status eq 'approved'"
     if resolved_ver != "latest-approved":

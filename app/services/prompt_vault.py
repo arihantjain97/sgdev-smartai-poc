@@ -23,23 +23,33 @@ def _active_pack() -> Tuple[str,str]:
 def _resolve_pack(pack_hint: Optional[str]) -> Tuple[str, str]:
     """
     Resolve pack and version from hint or fall back to active pack.
-    Accept forms: "psg", "edg", "psg@1.0.0"
+    Accept forms: "psg", "edg", "psg@1.0.0".
+
+    Returns canonical (PACK_ID_UPPER, version), because index rows store
+    pack_id as uppercase (e.g., "PSG", "EDG").
     """
     if pack_hint:
         if "@" in pack_hint:
             p, ver = pack_hint.split("@", 1)
-            return p.strip(), ver.strip()
-        p, ver = pack_hint.strip(), "latest-approved"
+        else:
+            p, ver = pack_hint, "latest-approved"
     else:
         p, ver = _active_pack()  # reads PROMPT_PACK_ACTIVE
 
-    # NEW: map "latest-approved" -> concrete version via per-pack keys
+    p = (p or "").strip()
+    ver = (ver or "latest-approved").strip()
+
+    # Canonicalise pack IDs to uppercase -> matches index docs with pack_id="PSG"/"EDG"
+    p_norm = p.upper()
+
+    # Map "latest-approved" -> concrete version via per-pack config
     if ver == "latest-approved":
-        key = f"PROMPT_PACK_LATEST.{p.upper()}"        # e.g., PROMPT_PACK_LATEST.PSG
+        key = f"PROMPT_PACK_LATEST.{p_norm}"  # e.g. PROMPT_PACK_LATEST.PSG
         pinned = (cfg_get(key) or "").strip()
         if pinned:
-            ver = pinned  # e.g., "1.0.0"
-    return p, ver
+            ver = pinned
+
+    return p_norm, ver
 
 def _cache_get(pack, ver, section, variant) -> Optional[dict]:
     key = (pack, ver, section, variant or "")
@@ -51,8 +61,19 @@ def _cache_get(pack, ver, section, variant) -> Optional[dict]:
 def _cache_set(pack, ver, section, variant, doc, ttl=30):
     _cache[(pack,ver,section,variant or "")] = (doc, time.time()+ttl)
 
-def retrieve_template(section_id: str, tags: Optional[List[str]] = None, section_variant: Optional[str] = None, pack_hint: Optional[str] = None) -> dict:
-    # NEW: resolve desired pack first (honors pack_hint if provided)
+def retrieve_template(
+    section_id: str,
+    tags: Optional[List[str]] = None,
+    section_variant: Optional[str] = None,
+    pack_hint: Optional[str] = None,
+) -> dict:
+    """
+    Retrieve the template for a given section/pack.
+
+    - pack_hint: "psg", "psg@1.0.3", etc. (resolved via _resolve_pack)
+    - If a concrete version is requested (ver != "latest-approved") and not found,
+      we hard-fail with LookupError instead of silently downgrading.
+    """
     pack, ver = _resolve_pack(pack_hint)
     cached = _cache_get(pack, ver, section_id, section_variant)
     if cached:
@@ -63,10 +84,9 @@ def retrieve_template(section_id: str, tags: Optional[List[str]] = None, section
         flt += f" and version eq '{ver}'"
 
     search_text = " ".join(tags or [section_id])
-
-    # ONLY ask for fields that are retrievable in your index
     SELECT_FIELDS = ["template_text", "metadata_json"]
 
+    # Primary search: honour pack + version strictly
     results = _client.search(
         search_text=search_text,
         filter=flt,
@@ -75,23 +95,26 @@ def retrieve_template(section_id: str, tags: Optional[List[str]] = None, section
         select=SELECT_FIELDS,
     )
 
-    hit = None
+    hit: Optional[dict] = None
     for d in results:
-        meta = {}
         try:
             meta = json.loads(d.get("metadata_json") or "{}")
         except Exception:
             meta = {}
         hit = {
             "template": d.get("template_text", ""),
-            "pack_id": meta.get("pack_id"),      # <— from metadata_json
-            "version": meta.get("version"),      # <— from metadata_json
+            "pack_id": meta.get("pack_id"),
+            "version": meta.get("version"),
             "metadata": meta,
         }
         break
 
-    if not hit:
-        # Fallback search (keep the same select)
+    # If explicit version requested and nothing found → hard fail
+    if not hit and ver != "latest-approved":
+        raise LookupError(f"No template found for {pack}@{ver}:{section_id}")
+
+    # Optional, looser fallback only for "latest-approved"
+    if not hit and ver == "latest-approved":
         results = _client.search(
             search_text=section_id,
             filter=f"pack_id eq '{pack}' and status eq 'approved' and section_id eq '{section_id}'",
@@ -99,7 +122,6 @@ def retrieve_template(section_id: str, tags: Optional[List[str]] = None, section
             select=SELECT_FIELDS,
         )
         for d in results:
-            meta = {}
             try:
                 meta = json.loads(d.get("metadata_json") or "{}")
             except Exception:
