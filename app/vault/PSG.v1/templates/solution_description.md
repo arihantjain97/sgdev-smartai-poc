@@ -12,7 +12,6 @@ Instructions:
 - Mention deployment details (e.g., location, equipment specs, vendor name) if available in evidence.
 - Emphasize alignment with productivity improvement and automation goals of PSG.
 - Use clear, outcome-oriented language that would be acceptable to EnterpriseSG evaluators.
-- Always start with "Version 1.0.3"
 
 ## Situation
 Describe the current business context and operational requirements.
