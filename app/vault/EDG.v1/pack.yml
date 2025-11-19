@@ -1,5 +1,5 @@
-pack_id: edg
-version: 1.0.3
+pack_id: EDG
+version: 1.0.0
 status: approved   # draft | candidate | approved
 labels: { grant: EDG, locale: en-SG }
 
