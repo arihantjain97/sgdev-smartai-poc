@@ -2,19 +2,89 @@
 """
 Script to recursively collect all files from a directory and output them
 in a structured text format with tree hierarchy and file contents.
+Respects .gitignore patterns.
 """
 
 import os
 import argparse
+import fnmatch
 from pathlib import Path
 
+# Try to import pathspec for better gitignore support, fallback to fnmatch if not available
+try:
+    import pathspec
+    HAS_PATHSPEC = True
+except ImportError:
+    HAS_PATHSPEC = False
 
-def generate_tree(directory):
-    """Generate a tree-like structure of the directory."""
+
+def load_gitignore_patterns(root_dir):
+    """Load and parse .gitignore patterns from root directory."""
+    gitignore_path = Path(root_dir) / ".gitignore"
+    patterns = []
+    
+    if gitignore_path.exists():
+        with open(gitignore_path, 'r', encoding='utf-8') as f:
+            for line in f:
+                line = line.strip()
+                # Skip empty lines and comments
+                if not line or line.startswith('#'):
+                    continue
+                patterns.append(line)
+    
+    if not patterns:
+        return None
+    
+    if HAS_PATHSPEC:
+        # Use pathspec for proper gitignore pattern matching
+        spec = pathspec.PathSpec.from_lines('gitwildmatch', patterns)
+        def check_path(rel_path_str):
+            # pathspec expects forward slashes
+            normalized = rel_path_str.replace('\\', '/')
+            return spec.match_file(normalized)
+        return check_path
+    else:
+        # Fallback to fnmatch-based matching
+        def should_ignore(rel_path_str):
+            # Normalize path separators
+            rel_path = rel_path_str.replace('\\', '/')
+            # Check each pattern
+            for pattern in patterns:
+                # Handle directory patterns (ending with /)
+                if pattern.endswith('/'):
+                    pattern = pattern[:-1]
+                    if fnmatch.fnmatch(rel_path, pattern) or rel_path.startswith(pattern + '/'):
+                        return True
+                # Handle patterns starting with / (root-relative)
+                elif pattern.startswith('/'):
+                    pattern = pattern[1:]
+                    if fnmatch.fnmatch(rel_path, pattern) or rel_path.startswith(pattern + '/'):
+                        return True
+                # Regular pattern matching - check if pattern matches any part of the path
+                else:
+                    # Check if pattern matches the path or any parent directory
+                    parts = rel_path.split('/')
+                    for i in range(len(parts)):
+                        subpath = '/'.join(parts[i:])
+                        if fnmatch.fnmatch(subpath, pattern) or subpath.startswith(pattern + '/'):
+                            return True
+            return False
+        return should_ignore
+
+
+def generate_tree(directory, gitignore_check=None):
+    """Generate a tree-like structure of the directory, respecting gitignore."""
     tree_lines = []
+    root_dir = Path(directory).resolve()
     
     def build_tree(path, prefix="", is_last=True):
         path = Path(path)
+        rel_path = path.relative_to(root_dir)
+        
+        # Check if path should be ignored
+        if gitignore_check and gitignore_check(str(rel_path)):
+            return
+        
         if path.is_file():
             tree_lines.append(f"{prefix}{'└── ' if is_last else '├── '}{path.name}")
         elif path.is_dir():
@@ -22,6 +92,12 @@ def generate_tree(directory):
             
             try:
                 children = sorted(path.iterdir(), key=lambda x: (x.is_file(), x.name.lower()))
+                # Always exclude .git directories
+                children = [c for c in children if c.name != '.git']
+                # Filter out ignored children
+                if gitignore_check:
+                    children = [c for c in children if not gitignore_check(str(c.relative_to(root_dir)))]
+                
                 for i, child in enumerate(children):
                     is_last_child = i == len(children) - 1
                     child_prefix = prefix + ("    " if is_last else "│   ")
@@ -29,13 +105,14 @@ def generate_tree(directory):
             except PermissionError:
                 tree_lines.append(f"{prefix}    [Permission Denied]")
     
-    build_tree(directory)
+    build_tree(root_dir)
     return tree_lines
 
 
 def collect_files(directory, output_file):
     """
     Recursively collect all files from directory and write to output file.
+    Respects .gitignore patterns.
     
     Args:
         directory (str): Source directory to collect files from
@@ -50,24 +127,44 @@ def collect_files(directory, output_file):
     # Ensure output directory exists
     output_path.parent.mkdir(parents=True, exist_ok=True)
     
-    # Get all files recursively
+    # Load gitignore patterns
+    gitignore_check = load_gitignore_patterns(source_dir)
+    if gitignore_check:
+        print("Loaded .gitignore patterns")
+    else:
+        print("No .gitignore found or no patterns loaded")
+    
+    # Get all files recursively, filtering by gitignore
     all_files = []
     for root, dirs, files in os.walk(source_dir):
+        # Always exclude .git directories (not useful source code, can be very large)
+        dirs[:] = [d for d in dirs if d != '.git']
+        
+        # Filter out ignored directories before descending
+        if gitignore_check:
+            dirs[:] = [d for d in dirs if not gitignore_check(str(Path(root).relative_to(source_dir) / d))]
+        
         for file in files:
             file_path = Path(root) / file
+            rel_path = file_path.relative_to(source_dir)
+            
+            # Skip if file matches gitignore pattern
+            if gitignore_check and gitignore_check(str(rel_path)):
+                continue
+            
             all_files.append(file_path)
     
     # Sort files for consistent ordering
     all_files.sort(key=lambda x: str(x).lower())
     
-    print(f"Found {len(all_files)} files in '{source_dir}'")
+    print(f"Found {len(all_files)} files in '{source_dir}' (after gitignore filtering)")
     print(f"Writing to '{output_path}'")
     
     with open(output_path, 'w', encoding='utf-8') as outfile:
         # Write tree hierarchy
         outfile.write("Directory Structure:\n")
         outfile.write("=" * 50 + "\n")
-        tree_lines = generate_tree(source_dir)
+        tree_lines = generate_tree(source_dir, gitignore_check)
         for line in tree_lines:
             outfile.write(line + "\n")
         outfile.write("\n")
