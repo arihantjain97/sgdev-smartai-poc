@@ -25,4 +25,3 @@ What are the key questions about productivity improvements and expected business
 ## Answer
 Present the solution and its expected business impact, including quantitative and qualitative benefits.
 
-#test-path-isolation-drill
