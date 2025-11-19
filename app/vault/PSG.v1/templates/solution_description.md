@@ -7,6 +7,7 @@ Context (evidence): {{evidence_window}}
 User context: {{user_prompt}}
 
 Instructions:
+- Always begin your output with " REGRESSION-TEST "
 - Summarize the IT solution, equipment, or consultancy service being applied for.
 - Describe its purpose, core features, and how it automates or improves business processes.
 - Mention deployment details (e.g., location, equipment specs, vendor name) if available in evidence.
