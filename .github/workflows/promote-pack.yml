@@ -29,8 +29,11 @@ jobs:
           if [ -z "${{ inputs.packs }}" ]; then
             echo "packs input is required"; exit 1
           fi
+      - name: Normalise pack input to uppercase
+        run: |
+          echo "PACKS=$(echo '${{ inputs.packs }}' | tr '[:lower:]' '[:upper:]')" >> $GITHUB_ENV
       - name: Build approved payload
-        run: python tools/build_index_payload.py --status approved --packs "${{ inputs.packs }}" --out artifacts/index_docs.json
+        run: python tools/build_index_payload.py --status approved --packs "$PACKS" --out artifacts/index_docs.json
       - name: Index to Azure Search
         env:
           AZURE_SEARCH_ADMIN_KEY: ${{ secrets.AZURE_SEARCH_ADMIN_KEY }}
@@ -38,7 +41,7 @@ jobs:
       - name: Wire-check
         env:
           AZURE_SEARCH_QUERY_KEY: ${{ secrets.AZURE_SEARCH_QUERY_KEY }}
-        run: python tools/wire_check.py --packs "${{ inputs.packs }}"
+        run: python tools/wire_check.py --packs "$PACKS"
       - name: Upload promote artifacts
         uses: actions/upload-artifact@v4
         with:
