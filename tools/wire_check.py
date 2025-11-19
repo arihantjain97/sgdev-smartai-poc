@@ -30,8 +30,8 @@ def query_search(endpoint: str, index: str, key: str, query: str, debug: bool = 
     }
     req = urllib.request.Request(url, data=data, headers=headers, method="POST")
     try:
-        with urllib.request.urlopen(req) as resp:
-            return json.loads(resp.read().decode("utf-8"))
+    with urllib.request.urlopen(req) as resp:
+        return json.loads(resp.read().decode("utf-8"))
     except urllib.error.HTTPError as e:
         if debug:
             body = e.read().decode("utf-8", errors="ignore")
