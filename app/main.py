@@ -145,22 +145,26 @@ async def upsert_session_facts(sid: str, body: SessionFactsReq):
 # ------------------------------------------------------------
 @app.post("/v1/session/{sid}/validate")
 async def validate_session(sid: str):
-    """
-    Grant-agnostic validation stub.
-    Returns validation checks for the session (eligibility, completeness, etc.)
-    Currently a non-blocking stub - can be expanded with specific rules later.
-    """
     try:
         sess = storage.sessions().get_entity(partition_key="session", row_key=sid)
     except Exception:
         raise HTTPException(status_code=404, detail="Session not found")
-    
-    # Start empty; you can add simple rules later
-    # Example future checks:
-    # - Grant-specific eligibility rules
-    # - Required evidence completeness
-    # - Data quality checks
-    return {"session_id": sid, "checks": []}
+
+    grant = (sess.get("grant") or "").upper()
+
+    checks = []
+
+    # PSG rule: equity >= 30%
+    if grant == "PSG":
+        equity = float(sess.get("local_equity_pct") or 0)
+        if equity < 30:
+            checks.append({
+                "code": "PSG.ELIG.LOCAL_EQUITY_MIN_30",
+                "level": "warning",
+                "message": "Local equity below 30% (PSG minimum)."
+            })
+
+    return {"session_id": sid, "checks": checks}
 
 @app.get("/v1/session/{sid}/checklist")
 async def checklist(sid: str):
@@ -307,19 +311,6 @@ async def _do_draft(req: DraftReq, response: Response, *, pack_hint: str):
 
     # --- Lightweight warnings (grant-specific checks) ---
     warnings = []
-    try:
-        sess = storage.sessions().get_entity(partition_key="session", row_key=req.session_id)
-        grant = (sess.get("grant") or "").upper()
-        if grant == "PSG":
-            equity = float(sess.get("local_equity_pct") or 0)
-            if equity < 30:
-                warnings.append({
-                    "code": "PSG.ELIG.LOCAL_EQUITY_MIN_30",
-                    "level": "warning",
-                    "message": "Local equity below 30% (PSG minimum).",
-                })
-    except Exception:
-        pass
 
     return {
         "section_id": req.section_id,
