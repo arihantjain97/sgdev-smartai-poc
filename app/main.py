@@ -40,10 +40,34 @@ def health():
 
 @app.get("/v1/config/features")
 def features():
+    packs_latest = {
+        "EDG": cfg_get("PROMPT_PACK_LATEST.EDG", None),
+        "PSG": cfg_get("PROMPT_PACK_LATEST.PSG", None),
+    }
     return {
         "feature_psg_enabled": get_bool("FEATURE_PSG_ENABLED", False),
         "model_worker": cfg_get("MODEL.WORKER", "gpt-4.1-mini-worker"),
-        "prompt_pack_active": cfg_get("PROMPT_PACK_ACTIVE", "edg@latest-approved"),
+        "packs_latest": packs_latest,
+    }
+
+@app.get("/v1/prompts/active")
+def prompts_active():
+    """
+    Lightweight observability for prompt configuration.
+    
+    All values are derived from PROMPT_PACK_LATEST.* and other config keys.
+    No code should ever read PROMPT_PACK_ACTIVE anymore.
+    """
+    packs_latest = {
+        "EDG": cfg_get("PROMPT_PACK_LATEST.EDG", None),
+        "PSG": cfg_get("PROMPT_PACK_LATEST.PSG", None),
+    }
+    return {
+        "packs_latest": packs_latest,
+        "model_worker": cfg_get("MODEL.WORKER", "gpt-4.1-mini-worker"),
+        "model_manager": cfg_get("MODEL.MANAGER", "gpt-4.1-mini-manager"),
+        "feature_psg_enabled": get_bool("FEATURE_PSG_ENABLED", False),
+        "appconfig_label": os.environ.get("APPCONFIG_LABEL", "dev"),
     }
 
 class SessionCreate(BaseModel):

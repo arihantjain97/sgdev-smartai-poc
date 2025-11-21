@@ -15,10 +15,13 @@ _cache: Dict[Tuple[str,str,str,str], Tuple[dict,float]] = {}
 # key=(pack,ver,section,variant) -> (doc, expires)
 
 def _active_pack() -> Tuple[str,str]:
-    v = cfg_get("PROMPT_PACK_ACTIVE", "edg@latest-approved")
-    if "@" not in v: return v, "latest-approved"
-    p, ver = v.split("@",1)
-    return p, ver
+    """
+    Default pack when caller does not pass pack_hint.
+    
+    We keep 'latest-approved' so _resolve_pack() will always resolve
+    the real version via PROMPT_PACK_LATEST.EDG in App Config.
+    """
+    return "edg", "latest-approved"
 
 def _resolve_pack(pack_hint: Optional[str]) -> Tuple[str, str]:
     """
@@ -34,7 +37,7 @@ def _resolve_pack(pack_hint: Optional[str]) -> Tuple[str, str]:
         else:
             p, ver = pack_hint, "latest-approved"
     else:
-        p, ver = _active_pack()  # reads PROMPT_PACK_ACTIVE
+        p, ver = _active_pack()  # defaults to EDG@latest-approved
 
     p = (p or "").strip()
     ver = (ver or "latest-approved").strip()
