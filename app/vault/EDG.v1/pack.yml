@@ -35,7 +35,7 @@ templates:
     status: draft        
     section_id: business_case
     retrieval_tags: ["business_case","edg","pas","manufacturing"]
-    file: templates/business_case.manufacturing.md
+    file: templates/business_case__manufacturing.md
     rubric:
       required_tokens: ["Problem","Agitate","Solve"]
 
@@ -51,7 +51,7 @@ templates:
   about_project__core:
     section_id: about_project
     retrieval_tags: ["edg","about_project","core"]
-    file: templates/about_project.core.md
+    file: templates/about_project__core.md
     rubric:
       required_tokens: ["Current","Challenges","Proposed"]
     evidence_hints:
@@ -61,7 +61,7 @@ templates:
   about_project__i_and_p__automation:
     section_id: about_project
     retrieval_tags: ["edg","about_project","innovation_productivity","automation"]
-    file: templates/about_project.i_and_p.automation.md
+    file: templates/about_project__i_and_p__automation.md
     rubric:
       required_tokens: ["Current State of Operations","Proposed Automation","Expected Productivity Improvements"]
     evidence_hints:
@@ -71,7 +71,7 @@ templates:
   about_project__i_and_p__product_development:
     section_id: about_project
     retrieval_tags: ["edg","about_project","innovation_productivity","product_development"]
-    file: templates/about_project.i_and_p.product_development.md
+    file: templates/about_project__i_and_p__product_development.md
     rubric:
       required_tokens: ["Product","Market","Barriers","Target"]
     evidence_hints:
@@ -81,7 +81,7 @@ templates:
   expansion_plan__market_access:
     section_id: expansion_plan
     retrieval_tags: ["edg","market_access","expansion_plan"]
-    file: templates/expansion_plan.market_access.md
+    file: templates/expansion_plan__market_access.md
     rubric:
       required_tokens: ["Target Country/Market","Competitors","Competitive Advantage"]
     evidence_hints:
