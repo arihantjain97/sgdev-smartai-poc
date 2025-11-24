@@ -1,6 +1,6 @@
 pack_id: EDG
-version: 1.0.1
-status: approved   # draft | candidate | approved
+version: 1.0.2
+status: candidate   # draft | candidate | approved
 labels: { grant: EDG, locale: en-SG }
 
 defaults:

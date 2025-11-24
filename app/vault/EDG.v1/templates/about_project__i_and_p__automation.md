@@ -32,3 +32,4 @@ Describe the system/automation and how it improves processes. {{#labels.vendor_q
 
 ## Expected Productivity Improvements
 Report before/after indicators **only if present** (e.g., time saved, error rate). {{#labels.costs}}Prefer [source:{{labels.costs}}].{{/labels.costs}}
+

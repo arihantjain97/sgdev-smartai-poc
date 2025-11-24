@@ -35,3 +35,4 @@ Define target market (size, geography, niche). {{#labels.market_analysis}}Prefer
 
 ## Commercialisation Strategy
 Summarise pricing, promotion, sales, and distribution if present.
+
