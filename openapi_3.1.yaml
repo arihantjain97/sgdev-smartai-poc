@@ -1,625 +1,740 @@
-openapi: 3.1.0
+openapi: 3.0.3
 info:
-  title: SmartAI API
-  version: 1.1.0
-  description: >
-    Runtime-driven proposal automation & related AI services for grants (EDG, PSG, MRA),
-    designed to extend to future use-cases (e.g., lead_generation) via packs, solutions, and section variants.
+  title: SmartAI Proposal Builder API (Dev)
+  version: "1.0.0"
+  description: |
+    Backend API for SmartAI Proposal Builder.
+
+    Core principles:
+    - **Grant-agnostic**: session carries `grant` (e.g., EDG, PSG) and the unified `/v1/draft`
+      endpoint chooses the correct prompt pack.
+    - **Config-driven**: pack versions and models are driven via Azure App Configuration
+      (`PROMPT_PACK_LATEST.*`, `MODEL.*`, feature flags).
+    - **Evidence-aware**: drafts are grounded on pre-processed evidence snippets stored per session.
+
 servers:
-  - url: https://api.smartai.local/v1
-security:
-  - bearerAuth: []
+  - url: https://sgdev-smartai-api-01.azurewebsites.net
+    description: Dev environment
 
 tags:
-  - name: Health
-  - name: Sessions
-  - name: Intake & Recommendations
-  - name: Solutions
-  - name: Checklist
-  - name: Evidence
-  - name: Eligibility
-  - name: Drafts
-  - name: Validation
-  - name: Packs
-  - name: Catalog & Vendor Docs
+  - name: system
+    description: Healthcheck and basic info
+  - name: config
+    description: Feature flags and prompt configuration
+  - name: sessions
+    description: Session lifecycle, facts, validation, checklist
+  - name: drafting
+    description: Grant-agnostic and grant-specific draft generation
+  - name: evidence
+    description: Evidence observability and debug tools
+  - name: debug
+    description: Miscellaneous debug / ops endpoints (non-production)
 
 paths:
+  /:
+    get:
+      tags: [system]
+      summary: Root service probe
+      description: Lightweight root probe for platform checks.
+      responses:
+        "200":
+          description: Service is up
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RootProbe'
+
   /health:
     get:
-      tags: [Health]
-      summary: Health ping
+      tags: [system]
+      summary: Healthcheck
+      description: Returns 200 if the API is healthy.
       responses:
-        '200': { description: OK }
-
-  /sessions:
-    post:
-      tags: [Sessions]
-      summary: Create a workflow session
-      requestBody:
-        required: true
-        content:
-          application/json:
-            examples:
-              edg:
-                summary: EDG session
-                value: { grant: EDG, use_case: proposal_builder, company: { uen: "201912345Z", name: "Innovate Pte. Ltd." } }
-              psg:
-                summary: PSG session
-                value: { grant: PSG, use_case: proposal_builder, company: { uen: "202055555A", name: "Alpha SG Pte. Ltd." } }
-            schema: { $ref: '#/components/schemas/SessionCreate' }
-      responses:
-        '201':
-          description: Created
+        "200":
+          description: Healthy
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Session' }
+              schema:
+                $ref: '#/components/schemas/HealthProbe'
 
-  /sessions/{sessionId}:
+  /v1/config/features:
     get:
-      tags: [Sessions]
-      summary: Get session
-      parameters: [ { $ref: '#/components/parameters/SessionId' } ]
-      responses:
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Session' }
+      tags: [config]
+      summary: Frontend feature flags and latest pack versions
+      description: |
+        Returns high-level configuration for frontend clients:
+        - Whether PSG flow is enabled
+        - Worker model name
+        - Latest approved versions for known packs (EDG, PSG).
 
-  /intake:
-    post:
-      tags: [Intake & Recommendations]
-      summary: Start an intake and attach it to a session
-      requestBody:
-        required: true
-        content:
-          application/json:
-            examples:
-              ex:
-                value:
-                  session_id: s_123
-                  problem_statement: "We want to expand into Malaysia and need a digital marketing push."
-                  context: { sector: "F&B", target_market: "MY", budget_sgd: 30000 }
-            schema:
-              type: object
-              required: [session_id, problem_statement]
-              properties:
-                session_id: { type: string }
-                problem_statement: { type: string }
-                context:
-                  type: object
-                  additionalProperties: true
+        This is a **stable contract for the UI** and does not expose
+        environment-specific details like App Config labels.
       responses:
-        '200':
-          description: OK
+        "200":
+          description: Current feature configuration
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  session_id: { type: string }
-                  intake_id: { type: string }
+                $ref: '#/components/schemas/FeaturesConfig'
 
-  /recommendations:
-    post:
-      tags: [Intake & Recommendations]
-      summary: Get solution recommendations for a problem statement
-      requestBody:
-        required: true
-        content:
-          application/json:
-            examples:
-              ex: { value: { session_id: s_123 } }
-            schema:
-              type: object
-              required: [session_id]
-              properties:
-                session_id: { type: string }
-      responses:
-        '200':
-          description: OK
-          content:
-            application/json:
-              examples:
-                ex:
-                  value:
-                    items:
-                      - id: sol_edg_iap_automation
-                        title: "Warehouse Process Automation"
-                        grant: EDG
-                        category: "Innovation & Productivity"
-                        tags: ["Automation"]
-                        rationale: "High fit vs. stated fulfilment bottlenecks; quantifiable productivity gains."
-                      - id: sol_mra_bd_my
-                        title: "In-market Business Development (Malaysia)"
-                        grant: MRA
-                        category: "Overseas Business Development"
-                        tags: ["In-market Business Development"]
-                        rationale: "Target market: MY; budget and timing align with MRA caps."
-              schema:
-                type: object
-                properties:
-                  items:
-                    type: array
-                    items: { $ref: '#/components/schemas/SolutionOption' }
-
-  /sessions/{sessionId}/solution:
-    post:
-      tags: [Solutions]
-      summary: Attach chosen solution to session (locks category/variant)
-      parameters: [ { $ref: '#/components/parameters/SessionId' } ]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            examples:
-              ex: { value: { solution_id: sol_edg_iap_automation } }
-            schema:
-              type: object
-              required: [solution_id]
-              properties:
-                solution_id: { type: string }
-      responses:
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  session_id: { type: string }
-                  solution: { $ref: '#/components/schemas/SolutionOption' }
-
-  /sessions/{sessionId}/checklist:
+  /v1/prompts/active:
     get:
-      tags: [Checklist]
-      summary: Get tasks for this grant/use_case/solution
-      parameters: [ { $ref: '#/components/parameters/SessionId' } ]
+      tags: [config]
+      summary: Active prompt configuration (ops / observability)
+      description: |
+        Returns the currently active pack versions and model pins as seen
+        by this running instance.
+
+        Intended for **ops and debugging**, not for general frontend use.
+        Useful when running canaries (different App Config labels per revision).
       responses:
-        '200':
-          description: OK
+        "200":
+          description: Active prompt configuration
           content:
             application/json:
-              examples:
-                edg_iap:
-                  value:
-                    session_id: s_123
-                    grant: EDG
-                    tasks:
-                      - { id: "acra_bizfile", type: "upload", title: "ACRA BizFile" }
-                      - { id: "audited_financials", type: "upload", title: "Audited Financials" }
-                      - { id: "about_company", type: "draft", title: "About the Company" }
-                      - { id: "about_project", type: "draft", title: "About the Project", category: "Innovation & Productivity", section_variant: "about_project.i_and_p.automation" }
-                      - { id: "project_outcomes", type: "draft", title: "Project Outcomes" }
-                psg:
-                  value:
-                    session_id: s_777
-                    grant: PSG
-                    tasks:
-                      - { id: "vendor_quotation", type: "upload", title: "Vendor Quotation (Annex 3 match)" }
-                      - { id: "cost_breakdown", type: "upload", title: "Cost Breakdown" }
-                      - { id: "solution_description", type: "draft", title: "Solution Description", category: "IT" }
-                      - { id: "business_impact", type: "draft", title: "Business Impact", requires: ["vendor_quotation"] }
               schema:
-                type: object
-                properties:
-                  session_id: { type: string }
-                  grant: { $ref: '#/components/schemas/GrantId' }
-                  tasks:
-                    type: array
-                    items: { $ref: '#/components/schemas/ChecklistItem' }
+                $ref: '#/components/schemas/PromptsActive'
 
-  /sessions/{sessionId}/eligibility:
+  /v1/session:
     post:
-      tags: [Eligibility]
-      summary: Upsert eligibility facts for this session
-      parameters: [ { $ref: '#/components/parameters/SessionId' } ]
+      tags: [sessions]
+      summary: Create a new session
+      description: |
+        Creates a new session row keyed by a generated `session_id`.
+
+        `grant` is used to choose the appropriate checklist and prompt pack
+        (e.g., EDG vs PSG). Additional facts are captured later via `/facts`.
       requestBody:
         required: true
         content:
           application/json:
-            examples:
-              edg: { value: { local_equity_pct: 45, turnover: 1200000, headcount: 18 } }
-              psg: { value: { local_equity_pct: 60, group_turnover: 80000000, used_in_singapore: true, no_payment_before_application: true } }
-              mra: { value: { local_equity_pct: 40, new_market_sales_3y_under_100k: true, group_headcount: 150 } }
-            schema: { $ref: '#/components/schemas/Eligibility' }
-      responses:
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  session_id: { type: string }
-                  eligibility: { $ref: '#/components/schemas/Eligibility' }
-
-  /evidence:
-    post:
-      tags: [Evidence]
-      summary: Upload evidence file (bind to session + label)
-      requestBody:
-        required: true
-        content:
-          multipart/form-data:
             schema:
-              type: object
-              required: [session_id, label, file]
-              properties:
-                session_id: { type: string }
-                label: { type: string, description: "Must match checklist upload id" }
-                file: { type: string, format: binary }
+              $ref: '#/components/schemas/SessionCreate'
       responses:
-        '201':
-          description: Stored
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/EvidenceReceipt' }
-
-  /evidence/{sessionId}:
-    get:
-      tags: [Evidence]
-      summary: List evidence for session
-      parameters: [ { $ref: '#/components/parameters/SessionId' } ]
-      responses:
-        '200':
-          description: OK
+        "200":
+          description: Session created
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  session_id: { type: string }
-                  items:
-                    type: array
-                    items: { $ref: '#/components/schemas/EvidenceItem' }
+                $ref: '#/components/schemas/SessionCreated'
 
-  /drafts:
-    post:
-      tags: [Drafts]
-      summary: Generate a draft section (grant-agnostic)
-      description: Selects pack by session grant/use_case/solution unless overridden.
+  /v1/session/{sid}:
+    get:
+      tags: [sessions]
+      summary: Get session metadata
+      description: |
+        Returns raw session metadata stored in the underlying session table,
+        including any facts previously upserted via `/facts` or `/eligibility`.
       parameters:
-        - in: header
-          name: X-Debug-Evidence
-          schema: { type: boolean, default: false }
+        - $ref: '#/components/parameters/SessionIdPath'
+      responses:
+        "200":
+          description: Session metadata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionDetails'
+        "404":
+          description: Session not found
+
+  /v1/session/{sid}/facts:
+    post:
+      tags: [sessions]
+      summary: Upsert facts for a session (canonical)
+      description: |
+        Upserts structured facts for a session. This is the **canonical**
+        endpoint for eligibility, profiling and diagnostics.
+
+        - Supports EDG/PSG eligibility fields (local equity, turnover, headcount)
+        - Supports grant attestations (used_in_singapore, no_payment_before_application)
+        - Accepts `extra` map for free-form key/value extension (lead-gen, vendor profiling, etc.)
+
+        Data is flattened into the session row and can be reused by
+        `/validate` and `/v1/draft`.
+      parameters:
+        - $ref: '#/components/parameters/SessionIdPath'
       requestBody:
         required: true
         content:
           application/json:
-            examples:
-              edg_about_project:
-                value:
-                  session_id: s_123
-                  section_id: "about_project"
-                  section_variant: "about_project.i_and_p.automation"
-                  inputs:
-                    tone: "Formal consultant voice"
-                    length_limit: 350
-                    evidence_labels: ["acra_bizfile","audited_financials"]
-              psg_impact:
-                value:
-                  session_id: s_777
-                  section_id: "business_impact"
-                  inputs:
-                    evidence_labels: ["vendor_quotation","cost_breakdown"]
-            schema: { $ref: '#/components/schemas/DraftRequest' }
+            schema:
+              $ref: '#/components/schemas/SessionFactsReq'
       responses:
-        '200':
+        "200":
+          description: Facts upserted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionFactsResponse'
+        "404":
+          description: Session not found
+
+  /v1/session/{sid}/eligibility:
+    post:
+      tags: [sessions]
+      summary: Upsert eligibility facts (legacy alias)
+      description: |
+        Backward-compatible alias for `/v1/session/{sid}/facts`.
+
+        **Deprecated for new integrations.** Use `/v1/session/{sid}/facts` instead.
+      deprecated: true
+      parameters:
+        - $ref: '#/components/parameters/SessionIdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SessionFactsReq'
+      responses:
+        "200":
+          description: Facts upserted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionFactsResponse'
+        "404":
+          description: Session not found
+
+  /v1/session/{sid}/validate:
+    post:
+      tags: [sessions]
+      summary: Run validation rules against session facts
+      description: |
+        Executes non-blocking validation checks over stored session facts.
+
+        Currently implemented rule set (extensible):
+        - `PSG.ELIG.LOCAL_EQUITY_MIN_30` (warning) if:
+          - `grant == "PSG"` AND `local_equity_pct < 30`.
+
+        This endpoint is designed to:
+        - Power lightweight UX validation banners
+        - Provide a hook for future business rule engines
+        - Run independently of drafting.
+      parameters:
+        - $ref: '#/components/parameters/SessionIdPath'
+      responses:
+        "200":
+          description: Validation checks
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationResult'
+        "404":
+          description: Session not found
+
+  /v1/session/{sid}/checklist:
+    get:
+      tags: [sessions]
+      summary: Get grant-aware checklist of tasks for a session
+      description: |
+        Returns the list of tasks (uploads + drafts) for the given session,
+        based on its `grant` type.
+
+        Examples:
+        - For EDG: upload ACRA, upload financials, draft consultancy scope,
+          draft about_project (with section_variant), draft expansion_plan.
+        - For PSG: upload vendor quotation, upload cost breakdown, draft business_impact, etc.
+
+        The `section_variant` field is used for EDG sub-flows (e.g., I&P, Market Access).
+      parameters:
+        - $ref: '#/components/parameters/SessionIdPath'
+      responses:
+        "200":
+          description: Checklist of tasks
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChecklistResponse'
+
+  /v1/draft:
+    post:
+      tags: [drafting]
+      summary: Unified grant-agnostic draft endpoint
+      description: |
+        Generates a draft for a specific section in the context of a session.
+
+        - Determines grant from the session (`grant` field).
+        - Chooses appropriate prompt pack (EDG or PSG) via internal prompt vault.
+        - Automatically loads relevant evidence snippets (e.g., ACRA, vendor_quotation).
+        - Applies soft evaluation (structure/groundedness checks).
+
+        This is the **preferred endpoint** for new clients.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DraftReq'
+      responses:
+        "200":
           description: Draft generated
-          headers:
-            x-prompt-pack:
-              schema: { type: string }
-              description: pack@version used (e.g., edg@1.2.0)
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/DraftResponse' }
-
-  /sessions/{sessionId}/validate:
-    post:
-      tags: [Validation]
-      summary: Run grant-specific validations for current state
-      parameters: [ { $ref: '#/components/parameters/SessionId' } ]
-      requestBody:
-        required: false
-        content:
-          application/json:
-            examples:
-              all: { value: { scope: "all" } }
-              annex3: { value: { scope: "annex3", section_id: "business_impact" } }
-            schema:
-              type: object
-              properties:
-                scope: { type: string, enum: [eligibility, evidence, annex3, completeness, all], default: all }
-                section_id: { type: string }
-      responses:
-        '200':
-          description: OK
-          content:
-            application/json:
-              examples:
-                ex:
-                  value:
-                    checks:
-                      - code: "PSG.ELIG.LOCAL_EQUITY_MIN_30"
-                        level: "error"
-                        message: "Local equity below 30%."
-                        hint: "Update shareholders or switch to non-grant workflow."
-                        related_items: []
-                      - code: "PSG.ANNEX3.MISMATCH"
-                        level: "warning"
-                        message: "Quotation items do not match Annex 3."
-                        hint: "Ensure SKUs and unit prices match the approved package."
-                        related_items: ["vendor_quotation"]
-              schema: { $ref: '#/components/schemas/ValidationResult' }
-
-  /packs:
-    get:
-      tags: [Packs]
-      summary: List available packs
-      parameters:
-        - in: query
-          name: grant
-          schema: { $ref: '#/components/schemas/GrantId' }
-        - in: query
-          name: use_case
-          schema: { $ref: '#/components/schemas/UseCase' }
-      responses:
-        '200':
-          description: OK
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  items:
-                    type: array
-                    items: { $ref: '#/components/schemas/PackSummary' }
+                $ref: '#/components/schemas/DraftResponse'
+        "404":
+          description: Session not found
+        "400":
+          description: Model deployment / configuration error
+        "500":
+          description: Internal failure (prompt vault, AI service, or evidence access)
 
-  /catalog/vendors:
-    get:
-      tags: [Catalog & Vendor Docs]
-      summary: Search vendor solutions (mock or mirrored index)
-      parameters:
-        - in: query
-          name: q
-          schema: { type: string }
-        - in: query
-          name: category
-          schema: { type: string, enum: [IT, Equipment, Consultancy] }
-      responses:
-        '200':
-          description: OK
-          content:
-            application/json:
-              examples:
-                ex:
-                  value:
-                    items:
-                      - id: "vend_it_pos_abc"
-                        name: "ABC POS Cloud (Annex 3 Package A)"
-                        category: "IT"
-                        vendor: "ABC Systems Pte. Ltd."
-                        annex3_ref: "PSG-IT-12345-A"
-              schema:
-                type: object
-                properties:
-                  items:
-                    type: array
-                    items: { $ref: '#/components/schemas/VendorSolution' }
-
-  /vendor-docs:
+  /v1/grants/edg/draft:
     post:
-      tags: [Catalog & Vendor Docs]
-      summary: Generate a vendor quotation/proposal draft (optional path)
+      tags: [drafting]
+      summary: EDG-specific draft endpoint (legacy wrapper)
+      description: |
+        Backward-compatible EDG-specific draft endpoint.
+
+        Internally forwards to the unified draft logic with `pack_hint="edg"`.
+
+        **Deprecated for new integrations.** Prefer `/v1/draft`.
+      deprecated: true
       requestBody:
         required: true
         content:
           application/json:
-            examples:
-              ex:
-                value:
-                  session_id: s_777
-                  vendor_solution_id: "vend_it_pos_abc"
-                  inputs: { seats: 10, locations: 2, term_months: 12 }
             schema:
-              type: object
-              required: [session_id, vendor_solution_id]
-              properties:
-                session_id: { type: string }
-                vendor_solution_id: { type: string }
-                inputs:
-                  type: object
-                  additionalProperties: true
+              $ref: '#/components/schemas/DraftReq'
       responses:
-        '201':
-          description: Draft vendor doc stored as evidence
+        "200":
+          description: Draft generated
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  file_id: { type: string }
-                  label: { type: string, example: "vendor_quotation" }
+                $ref: '#/components/schemas/DraftResponse'
+
+  /v1/grants/psg/draft:
+    post:
+      tags: [drafting]
+      summary: PSG-specific draft endpoint (legacy wrapper)
+      description: |
+        Backward-compatible PSG-specific draft endpoint.
+
+        Internally forwards to the unified draft logic with `pack_hint="psg"`.
+
+        **Deprecated for new integrations.** Prefer `/v1/draft`.
+      deprecated: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DraftReq'
+      responses:
+        "200":
+          description: Draft generated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DraftResponse'
+
+  /v1/debug/evidence/{sid}:
+    get:
+      tags: [evidence]
+      summary: List evidence blobs for a session
+      description: |
+        Lists evidence blobs associated with a session and (optionally) returns
+        a preview snippet for each.
+
+        Evidence blobs follow naming convention:
+        `"{session_id}_{label}.txt"`.
+      parameters:
+        - $ref: '#/components/parameters/SessionIdPath'
+        - name: preview
+          in: query
+          description: |
+            Maximum number of characters to include as preview for each evidence
+            blob. 0 returns metadata only.
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+            maximum: 4000
+            default: 0
+      responses:
+        "200":
+          description: Evidence items for the session
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvidenceListResponse'
+        "500":
+          description: Evidence listing failed
+
+  /v1/debug/packs:
+    get:
+      tags: [debug]
+      summary: Inspect prompt pack templates via search index
+      description: |
+        Debug endpoint to list templates for a given pack and version by querying
+        Azure AI Search.
+
+        **Dev/ops only; not intended for frontend use.**
+      parameters:
+        - name: pack
+          in: query
+          required: false
+          schema:
+            type: string
+            default: psg
+          description: Pack identifier (e.g. "edg", "psg").
+        - name: ver
+          in: query
+          required: false
+          schema:
+            type: string
+            default: latest-approved
+          description: Specific version or "latest-approved".
+      responses:
+        "200":
+          description: Pack sections and templates
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DebugPacksResponse'
+
+  /v1/debug/whereami:
+    get:
+      tags: [debug]
+      summary: Show backend search configuration
+      description: |
+        Simple debug endpoint that returns the configured Azure Search
+        endpoint and index, without exposing any secrets.
+      responses:
+        "200":
+          description: Search configuration probe
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WhereAmIResponse'
 
 components:
-  securitySchemes:
-    bearerAuth:
-      type: http
-      scheme: bearer
-      bearerFormat: JWT
-
   parameters:
-    SessionId:
+    SessionIdPath:
+      name: sid
       in: path
-      name: sessionId
       required: true
-      schema: { type: string }
+      schema:
+        type: string
+      description: Server-generated session identifier (e.g. "s_ab12cd34").
 
   schemas:
-    GrantId:
-      type: string
-      enum: [EDG, PSG, MRA]
-    UseCase:
-      type: string
-      enum: [proposal_builder, lead_generation]
+    RootProbe:
+      type: object
+      properties:
+        ok:
+          type: boolean
+          example: true
+        service:
+          type: string
+          example: smartai-api
+
+    HealthProbe:
+      type: object
+      properties:
+        ok:
+          type: boolean
+          example: true
+
+    FeaturesConfig:
+      type: object
+      properties:
+        feature_psg_enabled:
+          type: boolean
+          description: Whether PSG flows are enabled in this environment.
+        model_worker:
+          type: string
+          description: Name of the worker model deployment.
+        packs_latest:
+          type: object
+          description: Latest approved versions of known packs.
+          properties:
+            EDG:
+              type: string
+              nullable: true
+              example: "1.0.0"
+            PSG:
+              type: string
+              nullable: true
+              example: "1.0.0"
+
+    PromptsActive:
+      type: object
+      properties:
+        packs_latest:
+          $ref: '#/components/schemas/FeaturesConfig/properties/packs_latest'
+        model_worker:
+          type: string
+          description: Effective worker model for this instance.
+        model_manager:
+          type: string
+          description: Manager/orchestrator model (if used).
+        feature_psg_enabled:
+          type: boolean
+        appconfig_label:
+          type: string
+          description: App Config label used by this running instance (e.g., "dev", "stable", "canary").
 
     SessionCreate:
       type: object
-      required: [grant, use_case]
+      required: [grant]
       properties:
-        grant: { $ref: '#/components/schemas/GrantId' }
-        use_case: { $ref: '#/components/schemas/UseCase' }
-        company:
-          type: object
-          properties:
-            uen: { type: string }
-            name: { type: string }
-        metadata:
-          type: object
-          additionalProperties: true
-    Session:
+        grant:
+          type: string
+          description: Grant type identifier (e.g. "EDG", "PSG").
+          example: EDG
+        company_name:
+          type: string
+          nullable: true
+          description: Optional company name for display and prompts.
+
+    SessionCreated:
       type: object
       properties:
-        session_id: { type: string }
-        grant: { $ref: '#/components/schemas/GrantId' }
-        use_case: { $ref: '#/components/schemas/UseCase' }
-        created_at: { type: string, format: date-time }
-        company:
-          type: object
-          properties:
-            uen: { type: string }
-            name: { type: string }
-        solution: { $ref: '#/components/schemas/SolutionOption' }
-        eligibility: { $ref: '#/components/schemas/Eligibility' }
-        metadata:
+        session_id:
+          type: string
+          example: s_ab12cd34
+
+    SessionDetails:
+      type: object
+      properties:
+        session_id:
+          type: string
+        session:
           type: object
           additionalProperties: true
+          description: Raw session row including any stored facts.
 
-    SolutionOption:
+    SessionFactsReq:
       type: object
-      required: [id, title, grant, category, tags, rationale]
+      description: |
+        Generic session fact capture for eligibility, profiling, and diagnostics.
+        All fields are optional; unset fields are ignored on upsert.
       properties:
-        id: { type: string }
-        title: { type: string }
-        grant: { $ref: '#/components/schemas/GrantId' }
-        category: { type: string, description: "EDG: Core/I&P/Market Access; PSG: IT/Equipment/Consultancy; MRA: pillar" }
-        tags:
-          type: array
-          items: { type: string }
-        rationale: { type: string }
+        local_equity_pct:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 100
+          nullable: true
+          description: Local equity percentage.
+        turnover:
+          type: number
+          format: float
+          minimum: 0
+          nullable: true
+          description: Annual turnover/revenue.
+        headcount:
+          type: integer
+          minimum: 0
+          nullable: true
+          description: Number of employees.
+        used_in_singapore:
+          type: boolean
+          nullable: true
+          description: Whether the grant-funded outcome will be used in Singapore.
+        no_payment_before_application:
+          type: boolean
+          nullable: true
+          description: Whether no payment was made before the application.
+        extra:
+          type: object
+          nullable: true
+          additionalProperties: true
+          description: |
+            Free-form key-value facts, e.g. {"industry":"F&B","budget_range":"<50k"}.
 
-    ChecklistItem:
-      type: object
-      required: [id, type]
-      properties:
-        id: { type: string, description: "Section or evidence label, e.g., vendor_quotation, about_project" }
-        type: { type: string, enum: [upload, draft] }
-        title: { type: string }
-        help_text: { type: string }
-        category: { type: string }
-        section_variant: { type: string, description: "e.g., about_project.i_and_p.automation" }
-        requires:
-          type: array
-          items: { type: string }
-
-    Eligibility:
-      type: object
-      properties:
-        local_equity_pct: { type: number, minimum: 0, maximum: 100 }
-        turnover: { type: integer, minimum: 0 }
-        headcount: { type: integer, minimum: 0 }
-        group_turnover: { type: integer, minimum: 0 }
-        group_headcount: { type: integer, minimum: 0 }
-        new_market_sales_3y_under_100k: { type: boolean } # MRA
-        used_in_singapore: { type: boolean }               # PSG
-        no_payment_before_application: { type: boolean }   # PSG
-
-    EvidenceReceipt:
-      type: object
-      properties:
-        session_id: { type: string }
-        label: { type: string }
-        file_id: { type: string }
-        text_extracted: { type: boolean }
-
-    EvidenceItem:
+    SessionFactsResponse:
       type: object
       properties:
-        label: { type: string }
-        filename: { type: string }
-        size_bytes: { type: integer }
-        uploaded_at: { type: string, format: date-time }
-
-    DraftRequest:
-      type: object
-      required: [session_id, section_id]
-      properties:
-        session_id: { type: string }
-        section_id: { type: string }
-        section_variant: { type: string, description: "If omitted, server infers from selected solution" }
-        inputs:
+        session_id:
+          type: string
+        facts:
           type: object
           additionalProperties: true
-          properties:
-            tone: { type: string, default: "Formal consultant voice" }
-            length_limit: { type: integer, default: 350 }
-            evidence_labels:
-              type: array
-              items: { type: string }
-            pack_override:
-              type: string
-        debug:
-          type: object
-          properties:
-            return_evidence_snippet: { type: boolean, default: false }
+          description: Flattened map of all fields applied in this call.
 
-    DraftResponse:
+    ValidationCheck:
       type: object
       properties:
-        section_id: { type: string }
-        framework: { type: string, description: "e.g., PAS, SCQA" }
-        evidence_used:
-          type: array
-          items: { type: string }
-        output: { type: string }
-        evaluation:
-          type: object
-          properties:
-            groundedness: { type: number, minimum: 0, maximum: 1 }
-            toxicity: { type: number, minimum: 0, maximum: 1 }
+        code:
+          type: string
+          description: Machine-readable rule code (e.g. PSG.ELIG.LOCAL_EQUITY_MIN_30).
+        level:
+          type: string
+          description: Severity level (e.g. "warning", "error").
+        message:
+          type: string
+          description: Human-readable description of the issue.
 
     ValidationResult:
       type: object
       properties:
+        session_id:
+          type: string
         checks:
+          type: array
+          items:
+            $ref: '#/components/schemas/ValidationCheck'
+
+    ChecklistTask:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Logical task identifier (e.g. "acra_bizfile", "business_impact").
+        type:
+          type: string
+          description: Task type.
+          enum: [upload, draft]
+        section_variant:
+          type: string
+          nullable: true
+          description: Optional variant key for section (e.g. "about_project.i_and_p.automation").
+
+    ChecklistResponse:
+      type: object
+      properties:
+        session_id:
+          type: string
+        grant:
+          type: string
+          description: Effective grant for this session (uppercased).
+        tasks:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChecklistTask'
+
+    DraftReq:
+      type: object
+      required: [session_id, section_id]
+      properties:
+        session_id:
+          type: string
+          description: Existing session identifier.
+        section_id:
+          type: string
+          description: Logical section identifier to draft (e.g. "business_impact").
+        section_variant:
+          type: string
+          nullable: true
+          description: Optional variant key for sub-flows (EDG I&P vs Core vs Market Access).
+        inputs:
+          type: object
+          additionalProperties: true
+          description: |
+            Arbitrary input map, including:
+            - freeform text fields
+            - evidence selection overrides (evidence_labels / evidence_label)
+            - evidence_char_cap overrides.
+
+    DraftEvaluation:
+      type: object
+      description: Soft evaluation result for a draft.
+      properties:
+        score:
+          type: integer
+          description: Aggregate quality score (implementation-specific).
+          example: 55
+        fails:
+          type: array
+          items:
+            type: string
+          description: List of evaluation rule failures (e.g. "missing:source:").
+
+    DraftResponse:
+      type: object
+      properties:
+        section_id:
+          type: string
+        framework:
+          type: string
+          description: Framework chosen for this section (e.g. "SCQA", "PAS").
+        evidence_used:
+          type: array
+          items:
+            type: string
+          description: Evidence labels actually used in this draft, ordered.
+        output:
+          type: string
+          description: Generated draft text.
+        evaluation:
+          $ref: '#/components/schemas/DraftEvaluation'
+        warnings:
+          type: array
+          description: Non-blocking warnings (currently empty; reserved for future rules).
+          items:
+            $ref: '#/components/schemas/ValidationCheck'
+
+    EvidenceItem:
+      type: object
+      properties:
+        name:
+          type: string
+          description: Underlying blob name (e.g. "s_ab12cd34_acra_bizfile.txt").
+        label:
+          type: string
+          description: Logical evidence label (suffix without session prefix or extension).
+        chars:
+          type: integer
+          nullable: true
+          description: Number of characters in the evidence text (if preview loaded).
+        preview:
+          type: string
+          nullable: true
+          description: Preview snippet (up to `preview` chars) if requested.
+
+    EvidenceListResponse:
+      type: object
+      properties:
+        session_id:
+          type: string
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/EvidenceItem'
+
+    DebugPacksResponse:
+      type: object
+      properties:
+        pack:
+          type: string
+          description: Resolved pack identifier (uppercased).
+        version:
+          type: string
+          description: Resolved version (concrete or "latest-approved").
+        sections:
+          type: array
+          items:
+            type: string
+          description: Distinct section IDs present in this pack/version.
+        items:
           type: array
           items:
             type: object
             properties:
-              code: { type: string }
-              level: { type: string, enum: [error, warning, info] }
-              message: { type: string }
-              hint: { type: string }
-              related_items:
-                type: array
-                items: { type: string }
+              section_id:
+                type: string
+                nullable: true
+              template_key:
+                type: string
+                nullable: true
+              version:
+                type: string
+                nullable: true
 
-    PackSummary:
+    WhereAmIResponse:
       type: object
       properties:
-        id: { type: string, description: "pack id, e.g., edg|psg|mra|leadgen" }
-        version: { type: string }
-        status: { type: string, enum: [approved, draft, archived] }
-        sections:
-          type: array
-          items: { type: string }
-
-    VendorSolution:
-      type: object
-      properties:
-        id: { type: string }
-        name: { type: string }
-        category: { type: string, enum: [IT, Equipment, Consultancy] }
-        vendor: { type: string }
-        annex3_ref: { type: string }
+        endpoint:
+          type: string
+          nullable: true
+          description: Azure Search endpoint configured for this instance.
+        index:
+          type: string
+          description: Azure Search index name.
+        probe:
+          type: string
+          example: ok
