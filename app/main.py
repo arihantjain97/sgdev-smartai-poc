@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Optional, Dict, List
 from fastapi import FastAPI, UploadFile, Form, Query, HTTPException, Response
 from pydantic import BaseModel, Field
 from app.services import storage, taxonomy, composer, evaluator
@@ -9,8 +9,11 @@ from app.services.appcfg import get_bool, get as cfg_get
 from app.services.prompt_vault import _resolve_pack as _pv_resolve
 from azure.search.documents import SearchClient
 from azure.core.credentials import AzureKeyCredential
+from pathlib import Path
 import os
 import json
+import yaml
+import logging
 
 #test
 
@@ -225,6 +228,319 @@ async def checklist(sid: str):
         ]
 
     return {"session_id": sid, "grant": grant, "tasks": tasks}
+
+# ============================================================
+# Dynamic Checklist Helper Functions
+# ============================================================
+
+def load_pack_yml(pack: str, version: str) -> Optional[Dict[str, Any]]:
+    """
+    Load pack.yml from vault directory.
+    Returns None if pack.yml not found.
+    """
+    try:
+        vault_root = Path("app/vault")
+        # Find pack directory matching pack and version
+        # Pattern: EDG.v1, PSG.v1, etc.
+        pack_dir = None
+        for p in vault_root.glob("*.*"):
+            pack_id = p.name.split(".")[0].upper()
+            if pack_id == pack.upper():
+                pack_yml = p / "pack.yml"
+                if pack_yml.exists():
+                    pack_data = yaml.safe_load(pack_yml.read_text(encoding="utf-8"))
+                    # Check if version matches (or use first found if version not critical)
+                    if pack_data.get("version") == version or not version:
+                        pack_dir = p
+                        break
+        
+        if pack_dir:
+            pack_yml = pack_dir / "pack.yml"
+            if pack_yml.exists():
+                return yaml.safe_load(pack_yml.read_text(encoding="utf-8"))
+    except Exception as e:
+        logging.warning(f"Failed to load pack.yml for {pack}@{version}: {e}")
+    return None
+
+def query_template_index(pack: str, version: str) -> Dict[str, List[Dict[str, Any]]]:
+    """
+    Query Azure Search index for all templates matching pack and version.
+    Returns dict mapping section_id to list of template variants.
+    """
+    templates_by_section: Dict[str, List[Dict[str, Any]]] = {}
+    
+    try:
+        endpoint = os.environ["AZURE_SEARCH_ENDPOINT"].rstrip("/")
+        query_key = os.environ["AZURE_SEARCH_QUERY_KEY"]
+        index_name = os.environ.get("AZURE_SEARCH_INDEX", "smartai-prompts")
+        
+        client = SearchClient(endpoint, index_name, AzureKeyCredential(query_key))
+        
+        # Resolve version if "latest-approved"
+        if version == "latest-approved":
+            _, resolved_ver = _pv_resolve(pack.lower())
+        else:
+            resolved_ver = version
+        
+        flt = f"pack_id eq '{pack.upper()}' and status eq 'approved'"
+        if resolved_ver != "latest-approved":
+            flt += f" and version eq '{resolved_ver}'"
+        
+        results = client.search(
+            search_text="*",
+            filter=flt,
+            top=200,
+            select=["metadata_json"],
+        )
+        
+        for d in results:
+            try:
+                meta = json.loads(d.get("metadata_json") or "{}")
+                section_id = meta.get("section_id")
+                template_key = meta.get("template_key", "")
+                
+                if section_id:
+                    if section_id not in templates_by_section:
+                        templates_by_section[section_id] = []
+                    
+                    # Infer variant from template_key
+                    # Template keys use __ (e.g., "about_project__i_and_p__automation")
+                    # Variants use . (e.g., "about_project.i_and_p.automation")
+                    variant = None
+                    section_id_from_meta = meta.get("section_id", "")
+                    
+                    # If template_key has __ and section_id is different, this is likely a variant
+                    if "__" in template_key and section_id_from_meta:
+                        # Check if template_key represents a variant of section_id
+                        # e.g., section_id="about_project", template_key="about_project__i_and_p__automation"
+                        if template_key.startswith(section_id_from_meta + "__"):
+                            # Extract variant part: everything after section_id + "__"
+                            variant_part = template_key[len(section_id_from_meta) + 2:]  # +2 for "__"
+                            if variant_part:
+                                # Convert __ to . for variant format
+                                variant = f"{section_id_from_meta}.{variant_part.replace('__', '.')}"
+                    
+                    templates_by_section[section_id].append({
+                        "template_key": template_key,
+                        "section_id": section_id,
+                        "variant": variant,
+                        "retrieval_tags": meta.get("retrieval_tags", []),
+                        "metadata": meta,
+                    })
+            except Exception as e:
+                logging.warning(f"Failed to parse template metadata: {e}")
+                continue
+                
+    except Exception as e:
+        logging.warning(f"Failed to query template index: {e}")
+    
+    return templates_by_section
+
+def get_upload_tasks_for_pack(pack: str) -> List[Dict[str, str]]:
+    """
+    Get upload tasks for a pack. Currently hardcoded based on existing checklist logic.
+    In future, this could be derived from pack.yml or evidence_hints.
+    """
+    if pack.upper() == "PSG":
+        return [
+            {"id": "vendor_quotation", "type": "upload"},
+            {"id": "cost_breakdown", "type": "upload"},
+        ]
+    else:  # EDG
+        return [
+            {"id": "acra_bizfile", "type": "upload"},
+            {"id": "audited_financials", "type": "upload"},
+        ]
+
+def resolve_variant_for_section(
+    section_id: str,
+    templates: List[Dict[str, Any]],
+    pack_yml: Dict[str, Any],
+    session: Dict[str, Any]
+) -> Optional[str]:
+    """
+    Resolve which variant to use for a section.
+    Rules:
+    1. If session specifies sub-flow (innovation_productivity, market_access) -> match retrieval_tags
+    2. Else if pack.yml has default variant -> use it
+    3. Else -> None
+    """
+    if not templates:
+        return None
+    
+    # Rule 1: Check session for sub-flow hints
+    # Look for tags in session that might indicate sub-flow
+    session_tags = []
+    for key, val in session.items():
+        if isinstance(val, (str, int, float)) and val:
+            session_tags.append(str(val).lower())
+    
+    # Check for innovation_productivity or market_access hints
+    for template in templates:
+        tags = [t.lower() for t in template.get("retrieval_tags", [])]
+        if "innovation_productivity" in tags or "automation" in tags or "product_development" in tags:
+            if any(hint in session_tags for hint in ["automation", "productivity", "innovation"]):
+                return template.get("variant")
+        if "market_access" in tags:
+            if any(hint in session_tags for hint in ["market", "expansion", "access"]):
+                return template.get("variant")
+    
+    # Rule 2: Check pack.yml for default variant (if templates have section_variant defaults)
+    # This would be in pack.yml defaults, but we don't have that structure yet
+    # For now, prefer variants that match common patterns
+    
+    # Rule 3: If only one template, use its variant (or None)
+    if len(templates) == 1:
+        return templates[0].get("variant")
+    
+    # If multiple templates, prefer the one without variant (default) or first one
+    for template in templates:
+        if not template.get("variant"):
+            return None  # Default template, no variant
+    
+    # Return first variant found
+    return templates[0].get("variant") if templates else None
+
+def build_dynamic_checklist(pack: str, active_version: str, session: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """
+    Build dynamic checklist from pack.yml and template index.
+    Returns list of tasks in format: [{"id": "...", "type": "upload|draft", "section_variant": ...}]
+    """
+    tasks: List[Dict[str, Any]] = []
+    
+    try:
+        # Load pack.yml
+        pack_yml = load_pack_yml(pack, active_version)
+        if not pack_yml:
+            # Fallback to hardcoded checklist
+            logging.warning(f"pack.yml not found for {pack}@{active_version}, using fallback")
+            return get_fallback_checklist(pack)
+        
+        # Query template index
+        templates_by_section = query_template_index(pack, active_version)
+        
+        # Get upload tasks
+        upload_tasks = get_upload_tasks_for_pack(pack)
+        tasks.extend(upload_tasks)
+        
+        # Get draft tasks from pack.yml templates
+        templates_config = pack_yml.get("templates", {})
+        
+        # Build ordered list of draft sections from pack.yml
+        # Prefer explicit sections list, else use templates dict keys in order
+        sections_order = pack_yml.get("sections", [])
+        if not sections_order:
+            # Derive from templates keys (preserves YAML order in Python 3.7+)
+            sections_order = list(templates_config.keys())
+        
+        # Process each section from templates config
+        # Group by section_id to avoid duplicates, but preserve order from pack.yml
+        sections_processed = {}  # section_id -> (variant, order)
+        section_order_map = {}  # section_id -> first occurrence order
+        
+        for idx, section_key in enumerate(sections_order):
+            template_config = templates_config.get(section_key, {})
+            section_id = template_config.get("section_id", section_key)
+            
+            # Track first occurrence order for each section_id
+            if section_id not in section_order_map:
+                section_order_map[section_id] = idx
+            
+            # Skip if template status is not approved (unless pack status is approved)
+            template_status = template_config.get("status", pack_yml.get("status", "draft"))
+            if template_status != "approved" and pack_yml.get("status") != "approved":
+                continue
+            
+            # Check if section exists in index
+            section_templates = templates_by_section.get(section_id, [])
+            if not section_templates:
+                logging.warning(f"Section {section_id} not found in index, skipping")
+                continue
+            
+            # Store section for later processing (we'll resolve variant after collecting all)
+            if section_id not in sections_processed:
+                sections_processed[section_id] = {
+                    "templates": section_templates,
+                    "order": section_order_map[section_id]
+                }
+        
+        # Now process sections in order, resolving variants
+        sorted_sections = sorted(sections_processed.items(), key=lambda x: x[1]["order"])
+        
+        for section_id, section_data in sorted_sections:
+            section_templates = section_data["templates"]
+            
+            # Resolve variant
+            variant = resolve_variant_for_section(section_id, section_templates, pack_yml, session)
+            
+            # Ensure variant uses . format (not __)
+            if variant and "__" in variant:
+                variant = variant.replace("__", ".")
+            
+            tasks.append({
+                "id": section_id,
+                "type": "draft",
+                "section_variant": variant
+            })
+        
+    except Exception as e:
+        logging.error(f"Error building dynamic checklist: {e}")
+        # Fallback to hardcoded
+        return get_fallback_checklist(pack)
+    
+    return tasks
+
+def get_fallback_checklist(pack: str) -> List[Dict[str, Any]]:
+    """Fallback to hardcoded checklist matching existing /checklist endpoint."""
+    if pack.upper() == "PSG":
+        return [
+            {"id": "vendor_quotation", "type": "upload"},
+            {"id": "cost_breakdown", "type": "upload"},
+            {"id": "business_impact", "type": "draft", "section_variant": None},
+            {"id": "solution_description", "type": "draft", "section_variant": None},
+            {"id": "compliance_summary", "type": "draft", "section_variant": None},
+        ]
+    else:  # EDG
+        return [
+            {"id": "acra_bizfile", "type": "upload"},
+            {"id": "audited_financials", "type": "upload"},
+            {"id": "consultancy_scope", "type": "draft", "section_variant": None},
+            {"id": "about_project", "type": "draft", "section_variant": "about_project.i_and_p.automation"},
+            {"id": "expansion_plan", "type": "draft", "section_variant": "expansion_plan.market_access"},
+        ]
+
+@app.get("/v1/session/{sid}/checklisttest")
+async def checklist_test(sid: str):
+    """
+    Dynamic checklist endpoint built from pack.yml and template index.
+    This is a test endpoint for verification before replacing the original /checklist.
+    """
+    try:
+        sess = storage.sessions().get_entity(partition_key="session", row_key=sid)
+    except Exception:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    # Get pack from session (rename grant -> pack)
+    pack = (sess.get("grant") or "EDG").upper()
+    
+    # Resolve active version
+    try:
+        # Use same mechanism as draft endpoint
+        active_version = cfg_get(f"PROMPT_PACK_LATEST.{pack}", None)
+        if not active_version:
+            # Fallback: try to get from index or use latest
+            active_version = "latest-approved"
+    except Exception:
+        active_version = "latest-approved"
+    
+    # Build dynamic checklist
+    try:
+        tasks = build_dynamic_checklist(pack, active_version, dict(sess))
+    except Exception as e:
+        logging.warning(f"Dynamic checklist failed, using fallback: {e}")
+        tasks = get_fallback_checklist(pack)
+    
+    return {"session_id": sid, "pack": pack, "tasks": tasks}
 
 class DraftReq(BaseModel):
     session_id: str
