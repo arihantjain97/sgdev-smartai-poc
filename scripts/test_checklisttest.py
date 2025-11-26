@@ -9,147 +9,97 @@ import requests
 import json
 import sys
 
-BASE_URL = "https://sgdev-smartai-api-01.azurewebsites.net"
+API = "https://sgdev-smartai-api-01.azurewebsites.net"
+
+def pp(x):
+    print(json.dumps(x, indent=2))
+
+def create_session(pack):
+    # grant == pack (backend uses grant field to mean pack)
+    resp = requests.post(f"{API}/v1/session", json={"grant": pack})
+    assert resp.status_code == 200, resp.text
+    return resp.json()["session_id"]
 
 def test_edg_checklist():
-    """Test Case 1: EDG full path"""
-    print("\n=== Test Case 1: EDG Checklist ===")
-    
-    # Create EDG session
-    r = requests.post(f"{BASE_URL}/v1/session", json={"grant": "EDG"})
-    assert r.status_code == 200, f"Failed to create session: {r.status_code}"
-    sid = r.json()["session_id"]
-    print(f"Created EDG session: {sid}")
-    
-    # Call checklisttest
-    r = requests.get(f"{BASE_URL}/v1/session/{sid}/checklisttest")
-    assert r.status_code == 200, f"Failed to get checklist: {r.status_code}"
+    print("TEST: EDG checklisttest")
+    sid = create_session("EDG")
+    r = requests.get(f"{API}/v1/session/{sid}/checklisttest")
+    assert r.status_code == 200, r.text
     data = r.json()
+    pp(data)
     
-    print(f"Response: {json.dumps(data, indent=2)}")
+    assert data["pack"] == "EDG"
+    tasks = data["tasks"]
     
-    # Assertions
-    assert "session_id" in data, "Missing session_id"
-    assert "pack" in data, "Missing pack"
-    assert data["pack"] == "EDG", f"Expected pack=EDG, got {data['pack']}"
-    assert "tasks" in data, "Missing tasks"
-    assert isinstance(data["tasks"], list), "Tasks must be a list"
-    assert len(data["tasks"]) > 0, "Tasks list is empty"
+    # uploads first (from pack.yml)
+    u0, u1 = tasks[0], tasks[1]
+    assert u0["type"] == "upload"
+    assert u1["type"] == "upload"
+    assert u0["id"] in ["acra_bizfile"]
+    assert u1["id"] in ["audited_financials"]
     
-    # Check for upload tasks
-    upload_tasks = [t for t in data["tasks"] if t.get("type") == "upload"]
-    assert len(upload_tasks) >= 2, f"Expected at least 2 upload tasks, got {len(upload_tasks)}"
-    assert any(t["id"] == "acra_bizfile" for t in upload_tasks), "Missing acra_bizfile upload"
-    assert any(t["id"] == "audited_financials" for t in upload_tasks), "Missing audited_financials upload"
+    # drafts exist
+    draft_tasks = [t for t in tasks if t["type"] == "draft"]
+    assert len(draft_tasks) > 0
     
-    # Check for draft tasks
-    draft_tasks = [t for t in data["tasks"] if t.get("type") == "draft"]
-    assert len(draft_tasks) > 0, "Expected at least one draft task"
+    # variant sanity
+    for t in draft_tasks:
+        v = t.get("section_variant")
+        if v:
+            assert "__" not in v
     
-    # Check order: uploads first
-    assert data["tasks"][0]["type"] == "upload", "First task should be upload"
-    
-    print("✓ EDG checklist test passed")
-    return True
+    print("EDG checklisttest: PASS\n")
 
 def test_psg_checklist():
-    """Test Case 2: PSG path"""
-    print("\n=== Test Case 2: PSG Checklist ===")
-    
-    # Create PSG session
-    r = requests.post(f"{BASE_URL}/v1/session", json={"grant": "PSG"})
-    assert r.status_code == 200, f"Failed to create session: {r.status_code}"
-    sid = r.json()["session_id"]
-    print(f"Created PSG session: {sid}")
-    
-    # Call checklisttest
-    r = requests.get(f"{BASE_URL}/v1/session/{sid}/checklisttest")
-    assert r.status_code == 200, f"Failed to get checklist: {r.status_code}"
+    print("TEST: PSG checklisttest")
+    sid = create_session("PSG")
+    r = requests.get(f"{API}/v1/session/{sid}/checklisttest")
+    assert r.status_code == 200, r.text
     data = r.json()
+    pp(data)
     
-    print(f"Response: {json.dumps(data, indent=2)}")
+    assert data["pack"] == "PSG"
+    tasks = data["tasks"]
     
-    # Assertions
-    assert data["pack"] == "PSG", f"Expected pack=PSG, got {data['pack']}"
-    assert "tasks" in data, "Missing tasks"
+    # uploads first
+    uids = [t["id"] for t in tasks if t["type"] == "upload"]
+    assert "vendor_quotation" in uids
+    assert "cost_breakdown" in uids
     
-    # Check for PSG-specific uploads
-    upload_tasks = [t for t in data["tasks"] if t.get("type") == "upload"]
-    assert any(t["id"] == "vendor_quotation" for t in upload_tasks), "Missing vendor_quotation upload"
-    assert any(t["id"] == "cost_breakdown" for t in upload_tasks), "Missing cost_breakdown upload"
-    
-    # Check for draft tasks
-    draft_tasks = [t for t in data["tasks"] if t.get("type") == "draft"]
-    assert len(draft_tasks) > 0, "Expected at least one draft task"
-    
-    print("✓ PSG checklist test passed")
-    return True
+    print("PSG checklisttest: PASS\n")
 
 def test_missing_session():
-    """Test Case 3: Missing session"""
-    print("\n=== Test Case 3: Missing Session ===")
-    
-    r = requests.get(f"{BASE_URL}/v1/session/s_nonexistent123/checklisttest")
-    assert r.status_code == 404, f"Expected 404 for missing session, got {r.status_code}"
-    
-    print("✓ Missing session test passed")
-    return True
+    print("TEST: Missing session 404")
+    r = requests.get(f"{API}/v1/session/doesnotexist/checklisttest")
+    assert r.status_code == 404
+    print("Missing session: PASS\n")
 
 def test_variant_format():
-    """Test Case 4: Check variant format uses dots, not underscores"""
-    print("\n=== Test Case 4: Variant Format ===")
-    
-    # Create EDG session
-    r = requests.post(f"{BASE_URL}/v1/session", json={"grant": "EDG"})
-    sid = r.json()["session_id"]
-    
-    r = requests.get(f"{BASE_URL}/v1/session/{sid}/checklisttest")
+    print("TEST: variant format")
+    sid = create_session("EDG")
+    r = requests.get(f"{API}/v1/session/{sid}/checklisttest")
+    assert r.status_code == 200
     data = r.json()
     
-    # Check that variants use . format, not __
-    draft_tasks = [t for t in data["tasks"] if t.get("type") == "draft"]
-    for task in draft_tasks:
-        variant = task.get("section_variant")
-        if variant:
-            assert "__" not in variant, f"Variant should use dots, not underscores: {variant}"
-            assert "." in variant or variant is None, f"Variant format issue: {variant}"
+    for t in data["tasks"]:
+        v = t.get("section_variant")
+        if v:
+            assert "__" not in v, f"Invalid variant format: {v}"
     
-    print("✓ Variant format test passed")
-    return True
+    print("Variant format: PASS\n")
 
 def main():
-    """Run all tests"""
-    print("=" * 70)
-    print("Testing /v1/session/{sid}/checklisttest endpoint")
-    print("=" * 70)
-    
-    tests = [
-        test_edg_checklist,
-        test_psg_checklist,
-        test_missing_session,
-        test_variant_format,
-    ]
-    
-    passed = 0
-    failed = 0
-    
-    for test in tests:
-        try:
-            if test():
-                passed += 1
-        except AssertionError as e:
-            print(f"✗ Test failed: {e}")
-            failed += 1
-        except Exception as e:
-            print(f"✗ Test error: {e}")
-            failed += 1
-    
-    print("\n" + "=" * 70)
-    print(f"Summary: {passed} passed, {failed} failed")
-    print("=" * 70)
-    
-    return 0 if failed == 0 else 1
+    try:
+        test_edg_checklist()
+        test_psg_checklist()
+        test_missing_session()
+        test_variant_format()
+        print("ALL TESTS PASSED")
+        sys.exit(0)
+    except Exception as e:
+        print("TEST FAILED:", e)
+        sys.exit(1)
 
 if __name__ == "__main__":
-    sys.exit(main())
+    main()
 

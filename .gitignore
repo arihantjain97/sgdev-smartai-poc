@@ -218,3 +218,6 @@ output.txt
 
 # CI/CD build logs (contain sensitive data)
 lint_check.txt
+
+# Documentation (temporary/working docs)
+docs/checklisttest-implementation-summary.md

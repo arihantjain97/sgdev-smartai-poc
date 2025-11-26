@@ -3,6 +3,10 @@ version: 1.0.0
 status: approved   # draft | candidate | approved
 labels: { grant: EDG, locale: en-SG }
 
+uploads:
+  - acra_bizfile
+  - audited_financials
+
 defaults:
   frameworks:
     business_case: PAS

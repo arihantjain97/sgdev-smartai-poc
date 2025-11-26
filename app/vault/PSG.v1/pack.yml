@@ -5,6 +5,10 @@ labels:
   grant: PSG
   locale: en-SG
 
+uploads:
+  - vendor_quotation
+  - cost_breakdown
+
 defaults:
   frameworks:
     solution_description: SCQA

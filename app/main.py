@@ -262,12 +262,21 @@ def load_pack_yml(pack: str, version: str) -> Optional[Dict[str, Any]]:
         logging.warning(f"Failed to load pack.yml for {pack}@{version}: {e}")
     return None
 
-def query_template_index(pack: str, version: str) -> Dict[str, List[Dict[str, Any]]]:
+def query_template_index(pack: str, version: str, pack_yml: Optional[Dict[str, Any]] = None) -> Dict[str, List[Dict[str, Any]]]:
     """
     Query Azure Search index for all templates matching pack and version.
-    Returns dict mapping section_id to list of template variants.
+    Returns dict mapping base section_id (from pack.yml) to list of template variants.
+    
+    Groups templates by the base section_id from pack.yml, not the index's section_id.
     """
     templates_by_section: Dict[str, List[Dict[str, Any]]] = {}
+    templates_config = pack_yml.get("templates", {}) if pack_yml else {}
+    
+    # Build mapping from template_key to base section_id
+    template_key_to_section: Dict[str, str] = {}
+    for template_key, template_config in templates_config.items():
+        base_section_id = template_config.get("section_id", template_key)
+        template_key_to_section[template_key] = base_section_id
     
     try:
         endpoint = os.environ["AZURE_SEARCH_ENDPOINT"].rstrip("/")
@@ -290,39 +299,46 @@ def query_template_index(pack: str, version: str) -> Dict[str, List[Dict[str, An
             search_text="*",
             filter=flt,
             top=200,
-            select=["metadata_json"],
+            select=["section_id", "metadata_json"],
         )
         
         for d in results:
             try:
                 meta = json.loads(d.get("metadata_json") or "{}")
-                section_id = meta.get("section_id")
-                template_key = meta.get("template_key", "")
+                index_section_id = d.get("section_id")  # This is the full template key from index
+                template_key = meta.get("template_key", "") or index_section_id
                 
-                if section_id:
-                    if section_id not in templates_by_section:
-                        templates_by_section[section_id] = []
+                # Get base section_id from pack.yml (e.g., "about_project" from "about_project__core")
+                base_section_id = template_key_to_section.get(template_key)
+                if not base_section_id:
+                    # Fallback: if template_key not in pack.yml, use index section_id
+                    # Try to infer base section_id by removing variant suffix
+                    if "__" in template_key:
+                        base_section_id = template_key.split("__")[0]
+                    else:
+                        base_section_id = template_key
+                
+                if base_section_id:
+                    if base_section_id not in templates_by_section:
+                        templates_by_section[base_section_id] = []
                     
                     # Infer variant from template_key
                     # Template keys use __ (e.g., "about_project__i_and_p__automation")
                     # Variants use . (e.g., "about_project.i_and_p.automation")
                     variant = None
-                    section_id_from_meta = meta.get("section_id", "")
                     
-                    # If template_key has __ and section_id is different, this is likely a variant
-                    if "__" in template_key and section_id_from_meta:
-                        # Check if template_key represents a variant of section_id
-                        # e.g., section_id="about_project", template_key="about_project__i_and_p__automation"
-                        if template_key.startswith(section_id_from_meta + "__"):
-                            # Extract variant part: everything after section_id + "__"
-                            variant_part = template_key[len(section_id_from_meta) + 2:]  # +2 for "__"
+                    # If template_key has __ and differs from base_section_id, it's a variant
+                    if "__" in template_key and template_key != base_section_id:
+                        if template_key.startswith(base_section_id + "__"):
+                            # Extract variant part: everything after base_section_id + "__"
+                            variant_part = template_key[len(base_section_id) + 2:]  # +2 for "__"
                             if variant_part:
                                 # Convert __ to . for variant format
-                                variant = f"{section_id_from_meta}.{variant_part.replace('__', '.')}"
+                                variant = f"{base_section_id}.{variant_part.replace('__', '.')}"
                     
-                    templates_by_section[section_id].append({
+                    templates_by_section[base_section_id].append({
                         "template_key": template_key,
-                        "section_id": section_id,
+                        "section_id": base_section_id,
                         "variant": variant,
                         "retrieval_tags": meta.get("retrieval_tags", []),
                         "metadata": meta,
@@ -335,22 +351,6 @@ def query_template_index(pack: str, version: str) -> Dict[str, List[Dict[str, An
         logging.warning(f"Failed to query template index: {e}")
     
     return templates_by_section
-
-def get_upload_tasks_for_pack(pack: str) -> List[Dict[str, str]]:
-    """
-    Get upload tasks for a pack. Currently hardcoded based on existing checklist logic.
-    In future, this could be derived from pack.yml or evidence_hints.
-    """
-    if pack.upper() == "PSG":
-        return [
-            {"id": "vendor_quotation", "type": "upload"},
-            {"id": "cost_breakdown", "type": "upload"},
-        ]
-    else:  # EDG
-        return [
-            {"id": "acra_bizfile", "type": "upload"},
-            {"id": "audited_financials", "type": "upload"},
-        ]
 
 def resolve_variant_for_section(
     section_id: str,
@@ -416,11 +416,20 @@ def build_dynamic_checklist(pack: str, active_version: str, session: Dict[str, A
             logging.warning(f"pack.yml not found for {pack}@{active_version}, using fallback")
             return get_fallback_checklist(pack)
         
-        # Query template index
-        templates_by_section = query_template_index(pack, active_version)
+        # Query template index (pass pack_yml to enable proper grouping)
+        templates_by_section = query_template_index(pack, active_version, pack_yml)
         
-        # Get upload tasks
-        upload_tasks = get_upload_tasks_for_pack(pack)
+        # Get upload tasks from pack.yml (with fallback for backward compatibility)
+        upload_ids = pack_yml.get("uploads", [])
+        if not upload_ids:
+            # Fallback to hardcoded lists for backward compatibility
+            HARDCODED_UPLOADS = {
+                "PSG": ["vendor_quotation", "cost_breakdown"],
+                "EDG": ["acra_bizfile", "audited_financials"],
+            }
+            upload_ids = HARDCODED_UPLOADS.get(pack.upper(), [])
+        
+        upload_tasks = [{"id": u, "type": "upload"} for u in upload_ids]
         tasks.extend(upload_tasks)
         
         # Get draft tasks from pack.yml templates
